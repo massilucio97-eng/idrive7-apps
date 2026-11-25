@@ -43,7 +43,7 @@ const LOGO = require('./logos');
 const KB = require('./keyboard');
 const qrcodegen = require('./qrcodegen');
 
-const VERSION = '0.4.2';
+const VERSION = '0.4.3';
 const W = 1600, H = 520;
 const VID = 7, VIDEO_FILE = '/dev/shm/mgu-video-amn-iptv';
 const C = {
@@ -939,7 +939,16 @@ mgu.run({
                 const ch = film ? null : playingCh, subject = film || ch;
                 const pic = videoReady() && typeof cv.video === 'function';
                 const allowed = pictureAllowed();
-                if (subject && pic && allowed && pb.state !== 'idle') cv.video(VID, 0, 0, W, fullH);
+                if (subject && pic && allowed && pb.state !== 'idle') {
+                    const mode = settingsGet('picture') || 'fit';
+                if (mode === 'fit') cv.video(VID, 0, 0, W, fullH);
+                    else {
+                        const fitW = fullH * 16 / 9, vw = mode === 'fill' ? W : Math.round((fitW + W) / 2), vh = Math.round(vw * 9 / 16);
+                        if (typeof cv.clip === 'function') cv.clip(0, 0, W, fullH);
+                        cv.video(VID, Math.round((W - vw) / 2), Math.round((fullH - vh) / 2), vw, vh);
+                        if (typeof cv.noclip === 'function') cv.noclip();
+                    }
+                }
                 // what the picture cannot say: loading, an error, the park rule
                 const mid = fullH / 2;
                 let msg = null, sub = null;
