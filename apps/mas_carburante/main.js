@@ -27,10 +27,11 @@ const mgu = require('./kit/mgu');
 const M = require('./mimit');
 const fuelHttp = require('./fuel_http');
 const LOG = require('./fuellog');
+const PHONE = require('./phone');
 
 const FILES = { stations: '/images/exportCSV/anagrafica_impianti_attivi.csv', prices: '/images/exportCSV/prezzo_alle_8.csv' };
 const ROWS = 10;
-const STALE_MS = 6 * 3600 * 1000, CHECK_MS = 30 * 60 * 1000;
+const STALE_MS = 6 * 3600 * 1000, CHECK_MS = 30 * 60 * 1000, MOVE_KM = 8, RETRY_MS = 10 * 60 * 1000;
 const FUEL_NAME = { benzina: 'Benzina', gasolio: 'Gasolio', gpl: 'GPL', metano: 'Metano' };
 const MODE_NAME = { self: 'self', servito: 'servito', any: 'self o servito' };
 
@@ -73,21 +74,35 @@ mgu.run({
             zone: String(settings.get('zone') || 'RIVOLI').toUpperCase(),
             max: ROWS,
         });
+        // the iPhone's position (phone.js), when fresh; else the zone in the settings, as before
+        const phone = PHONE.start(http, ctx.dataDir, log, () => settings.get('gps') !== false);
+        const pos = () => (settings.get('gps') !== false ? phone.position() : null);
+        const near = (z, p) => z && z.gps && z.centre && M.km(z.centre.lat, z.centre.lon, p.lat, p.lon) < MOVE_KM;
         const fresh = () => {
-            const c = choice();
-            return zone && zone.comune === c.zone && Date.now() - (zone.fetchedAt || 0) < STALE_MS;
+            const c = choice(), p = pos();
+            if (!zone || Date.now() - (zone.fetchedAt || 0) >= STALE_MS) return false;
+            return p ? near(zone, p) : !zone.gps && zone.comune === c.zone;
         };
+        /** What to show: { zone, from, label } (from: the phone's position, distances from it) or null. */
+        const shown_ = () => {
+            const c = choice(), p = pos();
+            if (zone && p && near(zone, p)) return { zone: zone, from: p, label: 'da te (iPhone)' };
+            if (zone && !zone.gps && zone.comune === c.zone) return { zone: zone, from: null, label: 'da ' + title(c.zone) };
+            return null;
+        };
+        let lastTry = 0;
 
         /* ---------- the screen ---------- */
         function render(status) {
             const c = choice();
-            const head = FUEL_NAME[c.fuel] + ' ' + MODE_NAME[c.mode] + ' · entro ' + c.radius + ' km da ' + title(c.zone);
+            const sz = shown_(), p = pos();
+            const head = FUEL_NAME[c.fuel] + ' ' + MODE_NAME[c.mode] + ' · entro ' + c.radius + ' km ' + (sz ? sz.label : p ? 'da te (iPhone)' : 'da ' + title(c.zone));
             let info, list = [];
-            if (zone && zone.comune === c.zone && zone.centre) {
-                list = M.cheapest(zone, c);
+            if (sz && sz.zone.centre) {
+                list = M.cheapest(sz.zone, Object.assign({}, c, { from: sz.from }));
                 info = head + ' · prezzi del ' + dayMonth(zone.pricesDate);
                 if (!list.length) info += ' · nessun distributore trovato';
-            } else if (zone && zone.comune === c.zone && !zone.centre) {
+            } else if (sz && !sz.zone.centre) {
                 info = 'Nessun distributore registrato nel comune di ' + title(c.zone);
             } else {
                 info = head + ' · ' + (busy ? 'scarico i prezzi...' : 'nessun dato: premi Aggiorna');
@@ -123,13 +138,13 @@ mgu.run({
         async function refresh(why) {
             if (busy) return;
             if (!http.online()) { lastError = 'auto offline (serve l\'hotspot)'; render(); return; }
-            busy = true; lastError = null;
-            const c = choice();
+            busy = true; lastError = null; lastTry = Date.now();
+            const c = choice(), p = pos();
             const t0 = Date.now();
-            log.info('refresh (' + why + '): ' + c.zone);
+            log.info('refresh (' + why + '): ' + (p ? 'around the phone' : c.zone));
             try {
                 render('scarico i distributori...');
-                const zr = M.zoneReader(c.zone);
+                const zr = M.zoneReader(p ? { lat: p.lat, lon: p.lon } : c.zone);
                 const nb1 = await http.lines(FILES.stations, (l) => zr.line(l));
                 const z = zr.done();
                 log.info('stations: ' + z.total + ' read (' + Math.round(nb1 / 1024) + ' KB), ' + Object.keys(z.stations).length + ' kept, centre ' +
@@ -142,7 +157,7 @@ mgu.run({
                     pr = rd.done();
                     log.info('prices: ' + Object.keys(pr.prices).length + ' stations with prices (' + Math.round(nb2 / 1024) + ' KB)');
                 }
-                zone = { comune: c.zone, fetchedAt: Date.now(), stationsDate: z.date, pricesDate: pr.date, centre: z.centre, stations: z.stations, prices: pr.prices };
+                zone = { comune: p ? 'GPS' : c.zone, gps: !!p, fetchedAt: Date.now(), stationsDate: z.date, pricesDate: pr.date, centre: z.centre, stations: z.stations, prices: pr.prices };
                 try { fs.writeFileSync(cacheFile + '.tmp', JSON.stringify(zone)); fs.renameSync(cacheFile + '.tmp', cacheFile); }
                 catch (e) { log.warn('zone.json not written: ' + e.message); }
                 log.info('refresh done in ' + Math.round((Date.now() - t0) / 1000) + ' s');
@@ -214,13 +229,32 @@ mgu.run({
         }
 
         ui.onClick('BTN_REFRESH', () => refresh('button'));
+        ui.onClick('BTN_PHONE', () => {
+            ui.text('PHONE_1', 'Canale della tua auto: ' + phone.topic);
+            ui.text('PHONE_2', 'Stato: ' + phone.status());
+            ui.text('PHONE_TEXT', 'Sull\'iPhone, app Comandi > Automazione > Nuova > CarPlay > Si connette > Esegui subito.\n' +
+                'Azioni: 1) Ottieni posizione attuale. 2) Testo: [Latitudine] ; [Longitudine] (dai dettagli della posizione, arrotondati a 3 decimali). ' +
+                '3) Ottieni contenuto dell\'URL: https://ntfy.sh/' + phone.topic + ' , metodo POST, corpo: File/Testo con il testo del punto 2.\n' +
+                'La posizione resta valida 60 minuti; senza, l\'app usa la zona delle impostazioni. Il canale è segreto: non condividerlo (chi lo conosce può leggere la posizione inviata, ntfy.sh la tiene circa 12 ore).');
+            ui.open('PHONE');
+        });
         settings.onChange((k) => {
-            if (k === 'zone' && !fresh()) refresh('zone changed');
+            if ((k === 'zone' || k === 'gps') && !fresh()) refresh(k + ' changed');
             else render();
         });
         render();
-        if (!fresh()) refresh('start');
+        // a moment for the phone's position (phone.js asks at 2 s): one download, around the right place
+        setTimeout(() => { if (!fresh()) refresh('start'); }, 6000);
         setInterval(() => { if (!fresh() && !busy) refresh('timer'); }, CHECK_MS);
+        // a new position from the phone, farther than MOVE_KM from the stations kept: download them again (not more
+        // often than RETRY_MS, a download is ~14 MB on the phone's data)
+        let seenPos = null;
+        setInterval(() => {
+            const p = pos();
+            if (!p || (seenPos && p.at === seenPos.at)) return;
+            seenPos = p;
+            if (!fresh() && !busy && (Date.now() - lastTry > RETRY_MS || (zone && !zone.gps))) refresh('phone position'); else render();
+        }, 30000);
         setInterval(() => { if (ui.isVisible('MAIN') && !busy) render(); if (ui.isVisible('DIARY')) renderDiary(); }, 60000);
     },
 });

@@ -2,7 +2,8 @@
 /**
  * fuel_http.js - one file from the MIMIT open data, read line by line as it arrives, through the Store's
  * internet uplink (mgu-uplink; kit/runtime/uplink.js resolves the host through the lease's DNS servers, as
- * arefahmad's and M850i-amn's apps do). Only www.mimit.gov.it is asked; a redirect is followed only on it.
+ * arefahmad's and M850i-amn's apps do). Only www.mimit.gov.it is asked for the prices (a redirect is followed only
+ * on it), and ntfy.sh for the phone's position (phone.js: lines(path, fn, 'ntfy.sh')).
  *
  *   const http = require('./fuel_http').client(dataDir);
  *   await http.lines('/images/exportCSV/prezzo_alle_8.csv', (line) => ...);   // -> bytes read
@@ -12,15 +13,17 @@
 const https = require('https');
 const uplink = require('./kit/uplink');
 
-const HOST = 'www.mimit.gov.it';
+const HOST = 'www.mimit.gov.it', HOSTS = ['www.mimit.gov.it', 'ntfy.sh'];
 const MAX_BYTES = 80 * 1024 * 1024;     // the price file is ~10 MB, the stations ~4 MB
 const TIMEOUT_MS = 30000;
 
 function client(dataDir) {
     const lookupFor = uplink.resolver();
-    function get(pathname, onLine, hops) {
+    function get(pathname, onLine, hops, host) {
+        host = host || HOST;
         return new Promise((resolve, reject) => {
-            const opts = { method: 'GET', host: HOST, port: 443, path: pathname, timeout: TIMEOUT_MS,
+            if (HOSTS.indexOf(host) < 0) { reject(new Error('host not allowed: ' + host)); return; }
+            const opts = { method: 'GET', host: host, port: 443, path: pathname, timeout: TIMEOUT_MS,
                 headers: { 'User-Agent': 'mas_carburante/0.1 (iDrive 7)', 'Accept': 'text/csv,*/*' } };
             const lookup = lookupFor(uplink.lease(dataDir));
             if (lookup) opts.lookup = lookup;
@@ -32,7 +35,8 @@ function client(dataDir) {
                     res.resume();
                     const m = /^(?:https:\/\/www\.mimit\.gov\.it)?(\/[^\s]*)$/.exec(loc);
                     if (!m) { reject(new Error('redirect to another site refused')); return; }
-                    get(m[1], onLine, hops + 1).then(resolve, reject);
+                    if (host !== HOST) { reject(new Error('redirect refused')); return; }
+                    get(m[1], onLine, hops + 1, host).then(resolve, reject);
                     return;
                 }
                 if (res.statusCode !== 200) { res.resume(); reject(new Error('HTTP ' + res.statusCode)); return; }
@@ -54,15 +58,15 @@ function client(dataDir) {
                 });
                 res.on('error', (e) => { if (!failed) reject(e); });
             });
-            req.on('timeout', () => { req.abort(); reject(new Error('no answer from ' + HOST)); });
+            req.on('timeout', () => { req.abort(); reject(new Error('no answer from ' + host)); });
             req.on('error', reject);
             req.end();
         });
     }
     return {
         online() { return !!uplink.lease(dataDir); },
-        lines(pathname, onLine) { return get(pathname, onLine, 0); },
+        lines(pathname, onLine, host) { return get(pathname, onLine, 0, host); },
     };
 }
 
-module.exports = { client, HOST };
+module.exports = { client, HOST, HOSTS };

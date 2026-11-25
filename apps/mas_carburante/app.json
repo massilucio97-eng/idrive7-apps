@@ -2,7 +2,7 @@
   "id": "mas_carburante",
   "title": "Carburante",
   "description": "I distributori più economici vicino a te, dai prezzi ufficiali del MIMIT (open data, aggiornati ogni giorno alle 8), e il diario dei rifornimenti con il consumo reale: i rifornimenti li trova da sola dal livello del serbatoio e dal contachilometri, tu tocchi il distributore dove hai fatto benzina. Solo lettura: non scrive nulla sull'auto. Internet dallo Store (mgu-uplink).",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "vendor": "mas",
   "loggingId": "MSF1",
   "mguHmi": [
@@ -96,6 +96,11 @@
         ],
         [
           "button",
+          "BTN_PHONE",
+          "Collega iPhone (posizione GPS)"
+        ],
+        [
+          "button",
           "BTN_DIARY",
           "Diario rifornimenti e consumo"
         ],
@@ -177,9 +182,37 @@
           "Cancella l'ultimo rifornimento"
         ]
       ]
+    },
+    {
+      "name": "PHONE",
+      "kind": "list",
+      "title": "Collega iPhone",
+      "items": [
+        [
+          "text",
+          "PHONE_1",
+          ""
+        ],
+        [
+          "text",
+          "PHONE_2",
+          ""
+        ],
+        [
+          "scroll",
+          "PHONE_TEXT",
+          ""
+        ]
+      ]
     }
   ],
   "settings": [
+    {
+      "key": "gps",
+      "label": "Posizione dall'iPhone (distributori vicino a te)",
+      "type": "bool",
+      "default": true
+    },
     {
       "key": "fuel",
       "label": "Carburante",
@@ -226,7 +259,7 @@
     },
     {
       "key": "zone",
-      "label": "Zona (centro del comune)",
+      "label": "Zona quando non c'è la posizione dall'iPhone",
       "type": "choice",
       "default": "RIVOLI",
       "options": [

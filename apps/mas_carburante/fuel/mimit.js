@@ -71,11 +71,13 @@ function km(lat1, lon1, lat2, lon2) {
 }
 
 /**
- * The station file, a line at a time, for one zone (a comune's name). centre: the mean of the comune's own
- * stations; done() -> { centre: {lat, lon, n}, stations: {id: station + km} } with the stations within KEEP_KM.
+ * The station file, a line at a time, for one zone: a comune's name (centre: the mean of its own stations) or a
+ * point { lat, lon } (the phone's position: centre that point); done() -> { centre: {lat, lon, n}, stations:
+ * {id: station + km} } with the stations within KEEP_KM.
  */
-function zoneReader(comune) {
-    const want = String(comune).toUpperCase();
+function zoneReader(where) {
+    const point = where && typeof where === 'object' && isFinite(where.lat) && isFinite(where.lon) ? where : null;
+    const want = point ? null : String(where).toUpperCase();
     const all = [];
     let sLat = 0, sLon = 0, n = 0, date = null, lines = 0;
     return {
@@ -85,11 +87,11 @@ function zoneReader(comune) {
             const s = station(l);
             if (!s) return;
             all.push(s);
-            if (s.comune === want) { sLat += s.lat; sLon += s.lon; n++; }
+            if (want !== null && s.comune === want) { sLat += s.lat; sLon += s.lon; n++; }
         },
         done() {
-            if (!n) return { date: date, centre: null, stations: {}, total: all.length };
-            const c = { lat: sLat / n, lon: sLon / n, n: n };
+            if (!point && !n) return { date: date, centre: null, stations: {}, total: all.length };
+            const c = point ? { lat: point.lat, lon: point.lon, n: 0 } : { lat: sLat / n, lon: sLon / n, n: n };
             const out = {};
             all.forEach((s) => {
                 const d = km(c.lat, c.lon, s.lat, s.lon);
@@ -117,7 +119,8 @@ function priceReader(stations) {
 }
 
 /**
- * The cheapest stations for a choice: { fuel, mode ('self' | 'servito' | 'any'), radius (km), max } ->
+ * The cheapest stations for a choice: { fuel, mode ('self' | 'servito' | 'any'), radius (km), max, from } -> (from:
+ * { lat, lon }, the distances measured again from there - the phone's newer position; else the zone's own)
  * [{ id, name, brand, addr, comune, km, price, self, at }], cheapest first (then nearest).
  */
 function cheapest(zone, choice) {
@@ -125,7 +128,9 @@ function cheapest(zone, choice) {
     const radius = Number(choice.radius) || 10, max = choice.max || 10;
     Object.keys(zone.prices || {}).forEach((id) => {
         const s = zone.stations[id];
-        if (!s || s.km > radius) return;
+        if (!s) return;
+        const dkm = choice.from ? Math.round(km(choice.from.lat, choice.from.lon, s.lat, s.lon) * 10) / 10 : s.km;
+        if (dkm > radius) return;
         let best = null;
         zone.prices[id].forEach((p) => {
             if (p[0] !== choice.fuel) return;
@@ -133,7 +138,7 @@ function cheapest(zone, choice) {
             if (choice.mode === 'servito' && p[2]) return;
             if (!best || p[1] < best[1]) best = p;
         });
-        if (best) out.push({ id: id, name: s.name, brand: s.brand, addr: s.addr, comune: s.comune, km: s.km, price: best[1], self: best[2], at: best[3] });
+        if (best) out.push({ id: id, name: s.name, brand: s.brand, addr: s.addr, comune: s.comune, km: dkm, price: best[1], self: best[2], at: best[3] });
     });
     out.sort((a, b) => (a.price - b.price) || (a.km - b.km));
     return out.slice(0, max);
