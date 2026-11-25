@@ -28,6 +28,7 @@ const M = require('./mimit');
 const fuelHttp = require('./fuel_http');
 const LOG = require('./fuellog');
 const PHONE = require('./phone');
+const NOTIFY = require('./notify');
 
 const FILES = { stations: '/images/exportCSV/anagrafica_impianti_attivi.csv', prices: '/images/exportCSV/prezzo_alle_8.csv' };
 const ROWS = 10;
@@ -91,6 +92,9 @@ mgu.run({
             return null;
         };
         let lastTry = 0;
+        // to the phone: notifications (ntfy app) and the summary for the Home screen widget
+        const notifier = NOTIFY.start(http, phone.topic, log, () => settings.get('notify') !== false);
+        let lastRange = null, kmChangedAt = Date.now(), kmSeen = null;
 
         /* ---------- the screen ---------- */
         function render(status) {
@@ -119,6 +123,7 @@ mgu.run({
                     ' · questo mese ' + sm.month.eur.toFixed(2).replace('.', ',') + ' €' : carSignals ? 'Diario: il consumo compare dopo due rifornimenti' : 'Diario: aspetto il livello del serbatoio dall\'auto');
                 ui.visible('BTN_SKIP', false);
             }
+            publishState(list);
             if (status) info += ' · ' + status;
             else if (lastError) info += ' · ultimo aggiornamento non riuscito: ' + lastError;
             ui.text('MENU_INFO', info);
@@ -167,6 +172,18 @@ mgu.run({
             }
             busy = false;
             render();
+        }
+
+        /** The summary for the widget (notify.js sends it only when it changed). */
+        function publishState(list) {
+            const sm = LOG.summary(diary, Date.now()), tm = LOG.tripsMonth(diary, Date.now()), lt = diary.lastClosed, b = list && list[0], c = choice();
+            notifier.state({ data: {
+                fuel: FUEL_NAME[c.fuel] + ' ' + MODE_NAME[c.mode], l100: sm.l100, eurKm: sm.eurKm, avgPrice: sm.avgPrice,
+                month: { litres: sm.month.litres, eur: sm.month.eur, trips: tm.count, km: tm.km, tripsEur: tm.eur },
+                lastTrip: lt ? { at: lt.start, km: lt.km, litres: lt.litres, eur: lt.eur } : null,
+                best: b ? { price: b.price, brand: b.brand || 'Pompa bianca', addr: title(b.addr), comune: title(b.comune), km: b.km } : null,
+                range: lastRange, odometer: diary.last ? diary.last.km : null, level: diary.last ? diary.last.level : null,
+            } });
         }
 
         /* ---------- the diary ---------- */
@@ -218,7 +235,31 @@ mgu.run({
                     if (!LOG.valid(km, level)) return;
                     const first = !carSignals;
                     carSignals = true;
+                    const closedBefore = diary.lastClosed;
                     const what = LOG.reading(diary, km, level, Date.now());
+                    const lc = diary.lastClosed;
+                    if (lc && lc !== closedBefore) {
+                        // closed at this start: sent unless the stop notice already told it (diary.tripNotice: kept across starts)
+                        const n = diary.tripNotice;
+                        if (!n || n.start !== lc.start || lc.km - n.km >= 1) notifier.alert('Viaggio finito', tripText(lc), ['car'], 2);
+                        diary.tripNotice = null;
+                    }
+                    if (what === 'new') {
+                        const r = diary.refuels[diary.refuels.length - 1];
+                        notifier.alert('Rifornimento trovato', '+' + num1(r.litres) + ' l a ' + kmInt(r.km) + ' km. In auto tocca il distributore dove hai fatto benzina, così salvo il prezzo.', ['fuelpump'], 3);
+                    }
+                    if (kmSeen === null || km !== kmSeen) { kmSeen = km; kmChangedAt = Date.now(); }
+                    // the range: one notice when it falls under the setting, again only after it went back up
+                    const range = typeof v.range === 'number' && v.range > 0 && v.range < 4095 ? v.range : null;
+                    if (range !== null) {
+                        lastRange = range;
+                        const thr = Number(settings.get('rangeAlert')) || 0;
+                        if (thr && range < thr && !diary.rangeAlerted) {
+                            diary.rangeAlerted = true;
+                            const b = shown[0];
+                            notifier.alert('Autonomia ' + range + ' km', b ? 'Il più economico vicino: ' + euro(b.price) + ' · ' + (b.brand || 'Pompa bianca') + ', ' + title(b.addr) + ' (' + kmText(b.km) + ')' : 'Fai benzina presto.', ['warning', 'fuelpump'], 4);
+                        } else if (thr && range > thr + 30 && diary.rangeAlerted) diary.rangeAlerted = false;
+                    }
                     if (what) { log.info('refuel ' + what + ': ' + JSON.stringify(diary.refuels[diary.refuels.length - 1])); saveDiary(); render(); }
                     else if (first) { saveDiary(); render(); }
                     // the last reading is kept at every new km, so a refuel after the car is switched off is found at the next start
@@ -231,10 +272,12 @@ mgu.run({
         ui.onClick('BTN_REFRESH', () => refresh('button'));
         ui.onClick('BTN_PHONE', () => {
             ui.text('PHONE_1', 'Canale della tua auto: ' + phone.topic);
-            ui.text('PHONE_2', 'Stato: ' + phone.status());
+            ui.text('PHONE_2', 'Stato: ' + phone.status() + ' · ' + notifier.status());
             ui.text('PHONE_TEXT', 'Sull\'iPhone, app Comandi > Automazione > Nuova > CarPlay > Si connette > Esegui subito.\n' +
                 'Azioni: 1) Ottieni posizione attuale. 2) Testo: [Latitudine] ; [Longitudine] (dai dettagli della posizione, arrotondati a 3 decimali). ' +
                 '3) Ottieni contenuto dell\'URL: https://ntfy.sh/' + phone.topic + ' , metodo POST, corpo: File/Testo con il testo del punto 2.\n' +
+                'Notifiche: installa l\'app ntfy e iscriviti al canale ' + phone.topic + '-avvisi (server ntfy.sh).\n' +
+                'Widget: app Scriptable, script carburante_widget.js con il canale ' + phone.topic + '.\n' +
                 'La posizione resta valida 60 minuti; senza, l\'app usa la zona delle impostazioni. Il canale è segreto: non condividerlo (chi lo conosce può leggere la posizione inviata, ntfy.sh la tiene circa 12 ore).');
             ui.open('PHONE');
         });
@@ -256,5 +299,17 @@ mgu.run({
             if (!fresh() && !busy && (Date.now() - lastTry > RETRY_MS || (zone && !zone.gps))) refresh('phone position'); else render();
         }, 30000);
         setInterval(() => { if (ui.isVisible('MAIN') && !busy) render(); if (ui.isVisible('DIARY')) renderDiary(); }, 60000);
+        // the car stands (the odometer still for 2 minutes, usually parked with the head unit still on): the trip so far to the
+        // phone, once (again only after 5 more km); the closed trip at the next start is not sent a second time
+        setInterval(() => {
+            if (!diary.trip || Date.now() - kmChangedAt < 120000) return;
+            const t = LOG.tripPreview(diary);
+            const n = diary.tripNotice;
+            if (!t || t.km < 1 || (n && n.start === t.start && t.km - n.km < 5)) return;
+            diary.tripNotice = { start: t.start, km: t.km };
+            saveDiary();
+            notifier.alert('Viaggio finito', tripText(t), ['car'], 2);
+            render();
+        }, 30000);
     },
 });

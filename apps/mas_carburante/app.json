@@ -2,7 +2,7 @@
   "id": "mas_carburante",
   "title": "Carburante",
   "description": "I distributori più economici vicino a te, dai prezzi ufficiali del MIMIT (open data, aggiornati ogni giorno alle 8), e il diario dei rifornimenti con il consumo reale: i rifornimenti li trova da sola dal livello del serbatoio e dal contachilometri, tu tocchi il distributore dove hai fatto benzina. Solo lettura: non scrive nulla sull'auto. Internet dallo Store (mgu-uplink).",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "vendor": "mas",
   "loggingId": "MSF1",
   "mguHmi": [
@@ -212,6 +212,40 @@
       "label": "Posizione dall'iPhone (distributori vicino a te)",
       "type": "bool",
       "default": true
+    },
+    {
+      "key": "notify",
+      "label": "Notifiche e widget sul telefono (app ntfy)",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "rangeAlert",
+      "label": "Avviso autonomia bassa sotto",
+      "type": "choice",
+      "default": "80",
+      "options": [
+        [
+          "0",
+          "Mai"
+        ],
+        [
+          "50",
+          "50 km"
+        ],
+        [
+          "80",
+          "80 km"
+        ],
+        [
+          "100",
+          "100 km"
+        ],
+        [
+          "150",
+          "150 km"
+        ]
+      ]
     },
     {
       "key": "fuel",

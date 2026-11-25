@@ -161,6 +161,17 @@ function tripReading(state, km, level, now) {
     return closed;
 }
 
+/** The running trip as closeTrip() would give it, without closing it (null when it went nowhere yet). */
+function tripPreview(state) {
+    const t = state.trip;
+    if (!t) return null;
+    const keep = { trip: state.trip, trips: state.trips, lastClosed: state.lastClosed };
+    const copy = { last: state.last, refuels: state.refuels, trip: Object.assign({}, t), trips: [] };
+    const r = closeTrip(copy);
+    state.trip = keep.trip; state.trips = keep.trips; state.lastClosed = keep.lastClosed;
+    return r;
+}
+
 /** Trips this month: { count, km, eur } (eur over the trips with a cost). */
 function tripsMonth(state, now) {
     const d = new Date(now), y = d.getFullYear(), m = d.getMonth();
@@ -172,4 +183,4 @@ function tripsMonth(state, now) {
     return { count: count, km: Math.round(km * 10) / 10, eur: Math.round(eur * 100) / 100 };
 }
 
-module.exports = { empty, valid, reading, pending, setStation, skip, undo, leg, summary, closeTrip, tripReading, tripsMonth, lastPrice, RISE_L, NEAR_KM, MIN_KM, GAP_MS };
+module.exports = { empty, valid, reading, pending, setStation, skip, undo, leg, summary, closeTrip, tripReading, tripsMonth, tripPreview, lastPrice, RISE_L, NEAR_KM, MIN_KM, GAP_MS };

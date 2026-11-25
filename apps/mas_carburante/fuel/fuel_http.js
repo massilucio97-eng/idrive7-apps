@@ -63,7 +63,25 @@ function client(dataDir) {
             req.end();
         });
     }
+    /** POST a small body (JSON) to ntfy.sh only: resolves with the status code. */
+    function post(pathname, body) {
+        return new Promise((resolve, reject) => {
+            const data = Buffer.from(body, 'utf8');
+            if (data.length > 4096) { reject(new Error('message too large')); return; }
+            const opts = { method: 'POST', host: 'ntfy.sh', port: 443, path: pathname, timeout: TIMEOUT_MS,
+                headers: { 'User-Agent': 'mas_carburante (iDrive 7)', 'Content-Type': 'application/json', 'Content-Length': data.length } };
+            const lookup = lookupFor(uplink.lease(dataDir));
+            if (lookup) opts.lookup = lookup;
+            const ca = uplink.trustedCa(dataDir);
+            if (ca) opts.ca = ca;
+            const req = https.request(opts, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); res.on('error', reject); });
+            req.on('timeout', () => { req.abort(); reject(new Error('no answer from ntfy.sh')); });
+            req.on('error', reject);
+            req.end(data);
+        });
+    }
     return {
+        post: post,
         online() { return !!uplink.lease(dataDir); },
         lines(pathname, onLine, host) { return get(pathname, onLine, 0, host); },
     };
