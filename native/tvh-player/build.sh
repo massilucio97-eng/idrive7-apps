@@ -1,4 +1,5 @@
 #!/bin/sh
+# Stretch (MGU_STRETCH): massilucio97-eng fork
 # Builds build/tvh-player for the head unit, in ubuntu:18.04 (glibc 2.27, as the unit). Needs git, python3 and
 # Docker. FFmpeg n6.1.2 (the same pinned commit as the other players), configured with only what it plays: live TV
 # (the mpegts demuxer on stdin) and films (the mov and matroska demuxers too, over the http and tcp protocols to the
