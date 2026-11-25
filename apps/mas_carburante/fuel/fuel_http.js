@@ -1,0 +1,68 @@
+'use strict';
+/**
+ * fuel_http.js - one file from the MIMIT open data, read line by line as it arrives, through the Store's
+ * internet uplink (mgu-uplink; kit/runtime/uplink.js resolves the host through the lease's DNS servers, as
+ * arefahmad's and M850i-amn's apps do). Only www.mimit.gov.it is asked; a redirect is followed only on it.
+ *
+ *   const http = require('./fuel_http').client(dataDir);
+ *   await http.lines('/images/exportCSV/prezzo_alle_8.csv', (line) => ...);   // -> bytes read
+ *
+ * Node 8: no ?., ?? or object spread.
+ */
+const https = require('https');
+const uplink = require('./kit/uplink');
+
+const HOST = 'www.mimit.gov.it';
+const MAX_BYTES = 80 * 1024 * 1024;     // the price file is ~10 MB, the stations ~4 MB
+const TIMEOUT_MS = 30000;
+
+function client(dataDir) {
+    const lookupFor = uplink.resolver();
+    function get(pathname, onLine, hops) {
+        return new Promise((resolve, reject) => {
+            const opts = { method: 'GET', host: HOST, port: 443, path: pathname, timeout: TIMEOUT_MS,
+                headers: { 'User-Agent': 'mas_carburante/0.1 (iDrive 7)', 'Accept': 'text/csv,*/*' } };
+            const lookup = lookupFor(uplink.lease(dataDir));
+            if (lookup) opts.lookup = lookup;
+            const ca = uplink.trustedCa(dataDir);
+            if (ca) opts.ca = ca;
+            const req = https.request(opts, (res) => {
+                const loc = res.headers.location;
+                if (res.statusCode >= 300 && res.statusCode < 400 && loc && hops < 2) {
+                    res.resume();
+                    const m = /^(?:https:\/\/www\.mimit\.gov\.it)?(\/[^\s]*)$/.exec(loc);
+                    if (!m) { reject(new Error('redirect to another site refused')); return; }
+                    get(m[1], onLine, hops + 1).then(resolve, reject);
+                    return;
+                }
+                if (res.statusCode !== 200) { res.resume(); reject(new Error('HTTP ' + res.statusCode)); return; }
+                res.setEncoding('utf8');
+                let rest = '', n = 0, failed = false;
+                res.on('data', (chunk) => {
+                    if (failed) return;
+                    n += Buffer.byteLength(chunk);
+                    if (n > MAX_BYTES) { failed = true; req.abort(); reject(new Error('file too large')); return; }
+                    const parts = (rest + chunk).split('\n');
+                    rest = parts.pop();
+                    try { parts.forEach((l) => onLine(l.replace(/\r$/, ''))); }
+                    catch (e) { failed = true; req.abort(); reject(e); }
+                });
+                res.on('end', () => {
+                    if (failed) return;
+                    try { if (rest) onLine(rest.replace(/\r$/, '')); } catch (e) { reject(e); return; }
+                    resolve(n);
+                });
+                res.on('error', (e) => { if (!failed) reject(e); });
+            });
+            req.on('timeout', () => { req.abort(); reject(new Error('no answer from ' + HOST)); });
+            req.on('error', reject);
+            req.end();
+        });
+    }
+    return {
+        online() { return !!uplink.lease(dataDir); },
+        lines(pathname, onLine) { return get(pathname, onLine, 0); },
+    };
+}
+
+module.exports = { client, HOST };

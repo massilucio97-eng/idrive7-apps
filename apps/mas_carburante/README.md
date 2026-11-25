@@ -1,0 +1,13 @@
+# Carburante
+
+The cheapest fuel stations around a chosen comune on the centre screen, from the official **MIMIT open data**
+(Osservaprezzi carburanti, licence IODL 2.0): the prices in force at 8 in the morning, published every day.
+iDrive 7 · package `mas_carburante` · needs internet from the Store (mgu-uplink).
+
+- The ten cheapest stations: price, distance, brand; address, name and the day the price was reported.
+- Settings: fuel (benzina, gasolio, GPL, metano), self / servito / either, zone (a comune), radius (3-20 km).
+- The distance is from the centre of the chosen comune (the mean of its stations' coordinates): the car's own
+  GPS position is not read yet.
+- Only `www.mimit.gov.it` is asked. The two files are read line by line and only the stations within 25 km of
+  the zone (and their prices) are kept, in the app's data folder (`zone.json`). Read only: nothing is written
+  to the car.
