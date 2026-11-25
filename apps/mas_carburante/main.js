@@ -45,6 +45,9 @@ const num1 = (x) => x.toFixed(1).replace('.', ',');
 const kmInt = (k) => String(Math.round(k)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const dateText = (ms) => { const d = new Date(ms); return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2); };
 const KOMBI = 'de.bmw.infotainment.KombiIF';
+/** "13,0 km · 0,85 l · 1,48 €" (what is known of it) */
+const tripText = (t) => num1(t.km) + ' km' + (t.litres !== null ? ' · ' + t.litres.toFixed(2).replace('.', ',') + ' l' : '') +
+    (t.eur !== null ? ' · ' + t.eur.toFixed(2).replace('.', ',') + ' €' : t.litres === null ? ' · consumo non ancora noto' : ' · prezzo: indica un distributore al prossimo pieno');
 
 mgu.run({
     async start(ctx) {
@@ -95,8 +98,9 @@ mgu.run({
                 ui.text('LOG_INFO', 'Rifornimento trovato: +' + num1(pend.litres) + ' l a ' + kmInt(pend.km) + ' km. Tocca il distributore dove hai fatto benzina');
                 ui.visible('BTN_SKIP', true);
             } else {
-                const sm = LOG.summary(diary, Date.now());
-                ui.text('LOG_INFO', sm.l100 !== null ? 'Consumo reale ' + num1(sm.l100) + ' l/100 km' + (sm.eurKm !== null ? ' · ' + sm.eurKm.toFixed(3).replace('.', ',') + ' €/km' : '') +
+                const sm = LOG.summary(diary, Date.now()), lt = diary.lastClosed;
+                if (lt && Date.now() - lt.end < 6 * 3600 * 1000) ui.text('LOG_INFO', 'Ultimo viaggio: ' + tripText(lt));
+                else ui.text('LOG_INFO', sm.l100 !== null ? 'Consumo reale ' + num1(sm.l100) + ' l/100 km' + (sm.eurKm !== null ? ' · ' + sm.eurKm.toFixed(3).replace('.', ',') + ' €/km' : '') +
                     ' · questo mese ' + sm.month.eur.toFixed(2).replace('.', ',') + ' €' : carSignals ? 'Diario: il consumo compare dopo due rifornimenti' : 'Diario: aspetto il livello del serbatoio dall\'auto');
                 ui.visible('BTN_SKIP', false);
             }
@@ -159,6 +163,9 @@ mgu.run({
                 (sm.avgPrice !== null ? ' · prezzo medio ' + sm.avgPrice.toFixed(3).replace('.', ',') + ' €/l' : ''));
             ui.text('DIARY_3', 'Questo mese ' + num1(sm.month.litres) + ' l, ' + sm.month.eur.toFixed(2).replace('.', ',') + ' € · rifornimenti salvati: ' + sm.count +
                 (diary.last ? ' · ora ' + num1(diary.last.level) + ' l, ' + kmInt(diary.last.km) + ' km' : ''));
+            const tm = LOG.tripsMonth(diary, Date.now()), lt = diary.lastClosed;
+            ui.text('DIARY_4', 'Viaggi del mese: ' + tm.count + ', ' + num1(tm.km) + ' km, ' + tm.eur.toFixed(2).replace('.', ',') + ' €' +
+                (lt ? ' · ultimo viaggio (' + dateText(lt.start) + '): ' + tripText(lt) : ''));
             const rs = diary.refuels;
             for (let i = 0; i < 8; i++) {
                 const k = rs.length - 1 - i, r = rs[k], name = 'LOG_' + (i + 1);

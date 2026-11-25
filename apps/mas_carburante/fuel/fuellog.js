@@ -15,6 +15,11 @@
  *   { last: { km, level, at }, refuels: [{ at, km, litres, before, after, price, where }] }
  * price (EUR/l) and where (the station) are set when the user picks the station on the list; null until then.
  *
+ * Trips (0.3): a trip is the readings without a pause longer than GAP_MS (the car switched off: the app only runs
+ * while the head unit does). A trip is closed at the first reading after the pause, from its last kept values:
+ *   { start, end, km, litres, eur, how } - litres from the real consumption (summary().l100) when known, else from
+ *   the tank gauge (only when it fell by 1 l or more); eur at the newest refuel's price. Kept in state.trips.
+ *
  * Pure functions. Node 8: no ?., ?? or object spread.
  */
 
@@ -22,8 +27,10 @@ const RISE_L = 4;          // a rise this large is a refuel (the gauge moves 1-2
 const NEAR_KM = 5;         // ... read within this many km of the last reading
 const MAX_KEEP = 200;
 const MIN_KM = 20;         // a consumption over fewer km is not shown (the gauge's error)
+const GAP_MS = 10 * 60 * 1000;   // a pause this long ends a trip
+const TRIP_MIN_KM = 0.5, MAX_TRIPS = 300;
 
-function empty() { return { last: null, refuels: [] }; }
+function empty() { return { last: null, refuels: [], trip: null, trips: [] }; }
 
 /** A plausible reading? (the car sends all-ones for "not known") */
 function valid(km, level) {
@@ -32,10 +39,11 @@ function valid(km, level) {
 
 /**
  * One reading of the car: updates state; returns 'new' (a refuel found), 'more' (added to the last one) or null.
- * now: ms (Date.now()).
+ * now: ms (Date.now()). Trips: tripReading() first (it may close the one before a pause).
  */
 function reading(state, km, level, now) {
     if (!valid(km, level)) return null;
+    tripReading(state, km, level, now);
     const last = state.last;
     let what = null;
     if (last && km >= last.km && km - last.km <= NEAR_KM) {
@@ -111,4 +119,57 @@ function summary(state, now) {
 
 function round1(x) { return Math.round(x * 10) / 10; }
 
-module.exports = { empty, valid, reading, pending, setStation, skip, undo, leg, summary, RISE_L, NEAR_KM, MIN_KM };
+/** The price to cost a trip at: the newest refuel's with one, else null. */
+function lastPrice(state) {
+    for (let i = state.refuels.length - 1; i >= 0; i--) if (state.refuels[i].price) return state.refuels[i].price;
+    return null;
+}
+
+/** Close the running trip (if it went somewhere): pushed to state.trips; returns it or null. */
+function closeTrip(state) {
+    const t = state.trip;
+    state.trip = null;
+    if (!t) return null;
+    const km = Math.round((t.lastKm - t.startKm) * 10) / 10;
+    if (!(km >= TRIP_MIN_KM)) return null;
+    const sm = summary(state, t.lastAt);
+    let litres = null, how = null;
+    if (sm.l100 !== null) { litres = km * sm.l100 / 100; how = 'consumo reale'; }
+    else if (t.startLevel - t.lastLevel >= 1) { litres = t.startLevel - t.lastLevel; how = 'serbatoio'; }
+    const price = lastPrice(state);
+    const trip = { start: t.startAt, end: t.lastAt, km: km, litres: litres === null ? null : Math.round(litres * 100) / 100,
+        eur: litres !== null && price ? Math.round(litres * price * 100) / 100 : null, how: how };
+    state.trips = state.trips || [];
+    state.trips.push(trip);
+    if (state.trips.length > MAX_TRIPS) state.trips.shift();
+    return trip;
+}
+
+/** A reading for the trips: a pause longer than GAP_MS (or the odometer going back) ends the trip before it. */
+function tripReading(state, km, level, now) {
+    let closed = null;
+    const t = state.trip;
+    if (t && (now - t.lastAt > GAP_MS || km < t.lastKm)) closed = closeTrip(state);
+    if (!state.trip) state.trip = { startAt: now, startKm: km, startLevel: level, lastAt: now, lastKm: km, lastLevel: level };
+    else {
+        state.trip.lastAt = now; state.trip.lastKm = km;
+        // a refuel during the trip: the gauge's fall is counted from after it
+        if (level > state.trip.lastLevel + RISE_L) state.trip.startLevel = level - (state.trip.startLevel - state.trip.lastLevel);
+        state.trip.lastLevel = level;
+    }
+    if (closed) state.lastClosed = closed;
+    return closed;
+}
+
+/** Trips this month: { count, km, eur } (eur over the trips with a cost). */
+function tripsMonth(state, now) {
+    const d = new Date(now), y = d.getFullYear(), m = d.getMonth();
+    let count = 0, km = 0, eur = 0;
+    (state.trips || []).forEach((t) => {
+        const s = new Date(t.start);
+        if (s.getFullYear() === y && s.getMonth() === m) { count++; km += t.km; if (t.eur) eur += t.eur; }
+    });
+    return { count: count, km: Math.round(km * 10) / 10, eur: Math.round(eur * 100) / 100 };
+}
+
+module.exports = { empty, valid, reading, pending, setStation, skip, undo, leg, summary, closeTrip, tripReading, tripsMonth, lastPrice, RISE_L, NEAR_KM, MIN_KM, GAP_MS };

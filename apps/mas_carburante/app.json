@@ -2,7 +2,7 @@
   "id": "mas_carburante",
   "title": "Carburante",
   "description": "I distributori più economici vicino a te, dai prezzi ufficiali del MIMIT (open data, aggiornati ogni giorno alle 8), e il diario dei rifornimenti con il consumo reale: i rifornimenti li trova da sola dal livello del serbatoio e dal contachilometri, tu tocchi il distributore dove hai fatto benzina. Solo lettura: non scrive nulla sull'auto. Internet dallo Store (mgu-uplink).",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "vendor": "mas",
   "loggingId": "MSF1",
   "mguHmi": [
@@ -109,7 +109,7 @@
     {
       "name": "DIARY",
       "kind": "list",
-      "title": "Diario rifornimenti",
+      "title": "Diario, consumo e viaggi",
       "items": [
         [
           "text",
@@ -124,6 +124,11 @@
         [
           "text",
           "DIARY_3",
+          ""
+        ],
+        [
+          "text",
+          "DIARY_4",
           ""
         ],
         [

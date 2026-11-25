@@ -11,3 +11,6 @@ iDrive 7 · package `mas_carburante` · needs internet from the Store (mgu-uplin
 - Only `www.mimit.gov.it` is asked. The two files are read line by line and only the stations within 25 km of
   the zone (and their prices) are kept, in the app's data folder (`zone.json`). Read only: nothing is written
   to the car.
+- **Trips** (0.3.0): a trip ends at a pause of 10 minutes (the car switched off); its km, fuel (from the real
+  consumption, else the tank gauge) and cost (at the last refuel's price) show on the main page for 6 hours and
+  on the diary page, with the month's trips, km and spend.
