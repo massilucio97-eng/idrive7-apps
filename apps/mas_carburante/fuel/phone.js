@@ -23,7 +23,8 @@ const B32 = 'abcdefghijklmnopqrstuvwxyz234567';
 
 /** "45.071;7.515", "45,071;7,515", "45.071, 7.515", "45.071 7.515", {"lat":..,"lon":..} -> { lat, lon } or null */
 function parsePos(text) {
-    const t = String(text || '').trim();
+    // brackets or quotes around the numbers ("[45.071];[7.515]") are dropped
+    const t = String(text || '').replace(/[\[\]()"']/g, '').trim();
     let a = null, b = null;
     if (/^\{/.test(t)) {
         try { const j = JSON.parse(t); a = j.lat !== undefined ? j.lat : j.latitude; b = j.lon !== undefined ? j.lon : j.lng !== undefined ? j.lng : j.longitude; } catch (e) { return null; }
