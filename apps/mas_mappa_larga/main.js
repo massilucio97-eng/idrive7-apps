@@ -31,7 +31,7 @@ mgu.run({
             const r = rect();
             const strip = settings.get('strip') !== false ? route.line(ri.info(), Date.now()) : null;
             const grid = settings.get('grid') === true && !parked.moving();
-            wide.update({ on: settings.get('wide') === true, grid: grid, rect: r, strip: strip, fade: Number(settings.get('fade')) || 0 });
+            wide.update({ on: settings.get('wide') === true, grid: grid, rect: r, strip: strip, fade: Number(settings.get('fade')) || 0, shape: Number(settings.get('shape')) || 0 });
             if (strip !== lastStrip) lastStrip = strip;
             if (ui.isVisible('MAIN')) {
                 ui.text('STATUS', wide.view() + (settings.get('grid') === true && parked.moving() ? ' · griglia nascosta in marcia' : ''));

@@ -135,8 +135,8 @@ class WideMap {
         const w = this.want, r = w.rect;
         const active = !!(w.on && r && this.mapLive && this.cr.hostLayers);
         // the rect's frame: the anchor the map is drawn under
-        const fade = w.fade || 0;
-        if (r && (active || w.grid)) this._image('frame', r, 'content', 10, (cw, ch) => frameImage(cw, ch, fade), r.w + 'x' + r.h + 'f' + fade);
+        const fade = w.fade || 0, shape = w.shape || 0;
+        if (r && (active || w.grid)) this._image('frame', r, 'content', 10, (cw, ch) => frameImage(cw, ch, fade, shape), r.w + 'x' + r.h + 'f' + fade + 's' + shape);
         if (active) {
             const key = [r.x, r.y, r.w, r.h].join(',');
             if (!this.hosted || this.hostKey !== key) {
@@ -158,7 +158,7 @@ class WideMap {
         } else this._show('strip', false);
         // the test grid (parked only: main.js)
         if (w.grid && r) {
-            if (this._image('grid', { x: 0, y: 0, w: PANEL_W, h: PANEL_H }, 'overlay', 30, (cw, ch) => gridImage(cw, ch, r), 'g' + [r.x, r.y, r.w, r.h].join(','))) this._show('grid', true);
+            if (this._image('grid', { x: 0, y: 0, w: PANEL_W, h: PANEL_H }, 'overlay', 30, (cw, ch) => gridImage(cw, ch, r, shape), 'g' + [r.x, r.y, r.w, r.h, shape].join(','))) this._show('grid', true);
         } else this._show('grid', false);
     }
 
@@ -179,20 +179,29 @@ const SHADE = [7, 9, 12];      // the cluster's own near-black, so the faded edg
 
 /**
  * Over the map: transparent in the middle, darker towards the edges (fade px: the shading BMW draws round its own
- * map, "Bordi sfumati"), the corners rounded. fade 0: only the rounded corners. Each pixel's darkness follows its
- * distance inside a rounded rect, eased (smoothstep), so there is no visible line.
+ * map, "Bordi sfumati"). shape: 0 a rect with rounded corners; n > 2 a squared ellipse (superellipse |x|^n + |y|^n = 1,
+ * "Forma": widest at mid height, flatter towards the top and bottom, as the space between the gauge arcs). Each
+ * pixel's darkness follows its distance inside the shape, eased (smoothstep), so there is no visible line.
  */
-function frameImage(w, h, fade) {
+function frameImage(w, h, fade, shape) {
     const c = new Canvas(w, h);
     c.clear([0, 0, 0, 0]);
-    const d = c.d, f = Math.max(0, fade || 0), rad = Math.max(RADIUS, Math.min(f, Math.min(w, h) / 2));
-    const hw = w / 2, hh = h / 2;
+    const d = c.d, f = Math.max(0, fade || 0), n = shape > 2 ? shape : 0;
+    const hw = w / 2, hh = h / 2, rad = Math.max(RADIUS, Math.min(f, Math.min(w, h) / 2));
     for (let y = 0; y < h; y++) {
-        const dy = Math.abs(y + 0.5 - hh) - (hh - rad);
         for (let x = 0; x < w; x++) {
-            const dx = Math.abs(x + 0.5 - hw) - (hw - rad);
-            // signed distance to the rounded rect's edge (negative inside)
-            const out = Math.sqrt(Math.max(dx, 0) * Math.max(dx, 0) + Math.max(dy, 0) * Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - rad;
+            let out;     // signed distance to the shape's edge, px (negative inside)
+            if (n) {
+                const u = Math.abs(x + 0.5 - hw) / hw, v = Math.abs(y + 0.5 - hh) / hh;
+                const r = Math.pow(Math.pow(u, n) + Math.pow(v, n), 1 / n);
+                if (r < 1e-6) { out = -1e9; } else {
+                    const gu = Math.pow(u / r, n - 1) / hw, gv = Math.pow(v / r, n - 1) / hh;
+                    out = (r - 1) / Math.sqrt(gu * gu + gv * gv);
+                }
+            } else {
+                const dx = Math.abs(x + 0.5 - hw) - (hw - rad), dy = Math.abs(y + 0.5 - hh) - (hh - rad);
+                out = Math.sqrt(Math.max(dx, 0) * Math.max(dx, 0) + Math.max(dy, 0) * Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - rad;
+            }
             let a;
             if (out >= 0) a = 1;
             else if (f > 0) { const t = Math.min(1, -out / f); a = 1 - t * t * (3 - 2 * t); }
@@ -215,7 +224,7 @@ function stripImage(w, h, text) {
 }
 
 /** The test grid: lines every 40 px, stronger every 200 with the numbers, the rect in green. */
-function gridImage(w, h, r) {
+function gridImage(w, h, r, shape) {
     const c = new Canvas(w, h);
     c.clear([0, 0, 0, 0]);
     for (let x = 0; x <= w; x += 40) c.fillRect(Math.min(x, w - 2), 0, x % 200 ? 1 : 2, h, x % 200 ? [255, 255, 255, 70] : [255, 210, 0, 200]);
@@ -226,6 +235,15 @@ function gridImage(w, h, r) {
     c.fillRect(r.x, r.y, r.w, 4, g); c.fillRect(r.x, r.y + r.h - 4, r.w, 4, g);
     c.fillRect(r.x, r.y, 4, r.h, g); c.fillRect(r.x + r.w - 4, r.y, 4, r.h, g);
     c.text(r.x + ',' + r.y + '  ' + r.w + 'x' + r.h, r.x + 12, r.y + 34, 26, '#28dc5a', { literal: true });
+    if (shape > 2) {
+        // the squared ellipse the map shows in: its corners outside it are dark, but they still cover what is under them
+        const hw = r.w / 2, hh = r.h / 2, cx = r.x + hw, cy = r.y + hh;
+        for (let k = 0; k < 720; k++) {
+            const t = k / 720 * 2 * Math.PI, ct = Math.cos(t), st = Math.sin(t);
+            const px = cx + hw * Math.sign(ct) * Math.pow(Math.abs(ct), 2 / shape), py = cy + hh * Math.sign(st) * Math.pow(Math.abs(st), 2 / shape);
+            c.fillRect(Math.round(px) - 2, Math.round(py) - 2, 4, 4, [0, 200, 255, 255]);
+        }
+    }
     return c;
 }
 

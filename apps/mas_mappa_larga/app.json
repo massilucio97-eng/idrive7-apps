@@ -2,7 +2,7 @@
   "id": "mas_mappa_larga",
   "title": "Mappa larga",
   "description": "La mappa del telefono (Maps on cluster) più grande sul quadro: un rettangolo tra i due archi, sopra la velocità digitale e il consumo di BMW, mai sopra gli archi, la barra in basso o le spie. Con la riga di arrivo del percorso CarPlay. Si regola da fermi con la griglia di prova. Richiede Maps on cluster (robertnisipeanu/idrive-apps).",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "vendor": "mas",
   "loggingId": "MSM1",
   "mguHmi": [
@@ -87,6 +87,30 @@
       "label": "Riga di arrivo sotto la mappa (orario, minuti, km)",
       "type": "bool",
       "default": true
+    },
+    {
+      "key": "shape",
+      "label": "Forma della mappa",
+      "type": "choice",
+      "default": "4",
+      "options": [
+        [
+          "0",
+          "Rettangolo con angoli arrotondati"
+        ],
+        [
+          "3",
+          "Ellisse morbida"
+        ],
+        [
+          "4",
+          "Ellisse squadrata"
+        ],
+        [
+          "6",
+          "Ellisse molto squadrata"
+        ]
+      ]
     },
     {
       "key": "fade",
