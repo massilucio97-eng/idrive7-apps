@@ -107,6 +107,9 @@ int hevc_plugin(mfxSession s, void *plugin)
     return (int)MFXVideoUSER_Register(s, 1 /* MFX_PLUGINTYPE_VIDEO_DECODE */, plugin);
 }
 
+/* MGU_STRETCH=1: the picture is MGU_VIDEO_SIZE exactly, its shape not kept (stretched); read by decoder_msdk.cpp too */
+bool g_stretch = false;
+
 namespace {
 
 /* ---------- events ---------- */
@@ -282,6 +285,7 @@ uint32_t g_vw = 1920, g_vh = 1080, g_maxw = 1920, g_maxh = 1080;
 
 /* the picture's size: the film's display shape (its pixels' aspect included), fitted into the largest one, even */
 void picture_size(const AVCodecParameters *cp, AVRational sar) {
+    if (g_stretch) { g_vw = g_maxw; g_vh = g_maxh; return; }
     double w = cp->width > 0 ? cp->width : 1920, h = cp->height > 0 ? cp->height : 1080;
     if (sar.num > 0 && sar.den > 0) w = w * sar.num / sar.den;
     double k = std::min(std::min(g_maxw / w, g_maxh / h), 1.0);
@@ -1001,6 +1005,7 @@ int main() {
         unsigned w = 0, h = 0;
         if (sscanf(sz, "%ux%u", &w, &h) == 2 && w >= 16 && h >= 16 && w <= 2048 && h <= 2048) g_maxw = w & ~1u, g_maxh = h & ~1u;
     }
+    g_stretch = getenv("MGU_STRETCH") != nullptr;
     if (const char *pb = getenv("MGU_PREBUFFER_MS")) if (atoi(pb) >= 0 && atoi(pb) <= 10000) g_pre = atoi(pb) / 1000.0;
     if (const char *sb = getenv("MGU_SUBS")) if (!strcmp(sb, "0")) g_subs_on = false;
     if (const char *gd = getenv("MGU_GAIN_DB")) { const double db = atof(gd); g_gain_cdb = (int) lrint((db < 0 ? 0 : db > 15 ? 15 : db) * 100); }

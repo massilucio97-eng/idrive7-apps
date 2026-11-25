@@ -214,7 +214,11 @@ function createService(opts) {
         else if (m.ev === 'playback') st.playback = m.status;
         else if (m.ev === 'categories') cats = { at: m.at, categories: m.categories || [] };
         else if (m.ev === 'answer' && asks[m.id]) { asks[m.id](m); delete asks[m.id]; }
-        else if (m.ev === 'player-start') player.start(m.id, filmEnv(m.env));
+        else if (m.ev === 'player-start') {
+            // Picture size "stretch" (app setting): the player makes the picture the screen's shape, 1600x520
+            const fe = filmEnv(m.env), se = prefs && prefs.stretch ? { MGU_STRETCH: '1', MGU_VIDEO_SIZE: '1600x520' } : null;
+            player.start(m.id, fe || se ? Object.assign({}, fe || {}, se || {}) : null);
+        }
         else if (m.ev === 'player-ctl') player.ctl(m.id, m.line);
         else if (m.ev === 'player-stop') player.stop(m.id);
         else if (m.ev === 'signed-out') st.client = { state: 'signed-out' };
@@ -396,8 +400,8 @@ function createService(opts) {
         } else if (cmd === 'prefs') {
             const g = Number(m.gain);
             const p = { profile: 'ts', adaptive: false, subs: m.subs !== false,
-                gain: isFinite(g) ? Math.max(0, Math.min(15, g)) : 9, even: m.even === true };
-            if (!prefs || p.profile !== prefs.profile || p.adaptive !== prefs.adaptive || p.subs !== prefs.subs || p.gain !== prefs.gain || p.even !== prefs.even) {
+                gain: isFinite(g) ? Math.max(0, Math.min(15, g)) : 9, even: m.even === true, stretch: m.stretch === true };
+            if (!prefs || p.profile !== prefs.profile || p.adaptive !== prefs.adaptive || p.subs !== prefs.subs || p.gain !== prefs.gain || p.even !== prefs.even || p.stretch !== prefs.stretch) {
                 prefs = p;
                 try { writeJson('prefs.json', prefs); } catch (e) { log('prefs: ' + e.message); }
                 toChild({ op: 'prefs', prefs });

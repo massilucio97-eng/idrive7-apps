@@ -43,7 +43,7 @@ const LOGO = require('./logos');
 const KB = require('./keyboard');
 const qrcodegen = require('./qrcodegen');
 
-const VERSION = '0.4.3';
+const VERSION = '0.4.4';
 const W = 1600, H = 520;
 const VID = 7, VIDEO_FILE = '/dev/shm/mgu-video-amn-iptv';
 const C = {
@@ -158,10 +158,12 @@ mgu.run({
             setInterval(guard('poll', poll), 1500);
             poll();
             // what the service plays: sound and picture settings
-            const sendPrefs = () => svc.ask({ cmd: 'prefs', gain: Number(settingsGet('gain')) || 0, subs: true, even: false }).catch(() => {});
+            const sendPrefs = () => svc.ask({ cmd: 'prefs', gain: Number(settingsGet('gain')) || 0, subs: true, even: false, stretch: settingsGet('picture') === 'stretch' }).catch(() => {});
             setTimeout(sendPrefs, 1500);
             settings.onChange(guard('settings', (k) => {
                 if (k === 'gain') sendPrefs();
+                // a new picture size: the channel playing starts again with it
+                if (k === 'picture') sendPrefs().then(() => { if (playingCh && !playingFilm) svc.ask({ cmd: 'play', id: playingCh.id, name: playingCh.name }).catch(() => {}); });
                 if (k === 'signout' && settingsGet('signout') === 'yes') {
                     settings.set('signout', 'no');
                     svc.ask({ cmd: 'stop' }).then(() => svc.ask({ cmd: 'signout' })).then(() => { cats = []; Object.keys(lists).forEach((k2) => { delete lists[k2]; }); page = 'signin'; say('Signed out: the login is deleted from this car'); }, () => {});
@@ -940,8 +942,9 @@ mgu.run({
                 const pic = videoReady() && typeof cv.video === 'function';
                 const allowed = pictureAllowed();
                 if (subject && pic && allowed && pb.state !== 'idle') {
+                    // Picture size: fit keeps the whole 16:9 picture; zoom and fill widen it and cut top and bottom
                     const mode = settingsGet('picture') || 'fit';
-                if (mode === 'fit') cv.video(VID, 0, 0, W, fullH);
+                    if (mode === 'fit' || mode === 'stretch') cv.video(VID, 0, 0, W, fullH);
                     else {
                         const fitW = fullH * 16 / 9, vw = mode === 'fill' ? W : Math.round((fitW + W) / 2), vh = Math.round(vw * 9 / 16);
                         if (typeof cv.clip === 'function') cv.clip(0, 0, W, fullH);

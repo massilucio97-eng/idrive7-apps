@@ -22,6 +22,7 @@ int hevc_plugin(mfxSession s, void *plugin);   /* probe.cpp: the unit's HEVC dec
 #include <unistd.h>
 
 #include <vector>
+extern bool g_stretch;
 
 /* libva, from va/va.h and va/va_drm.h; the unit has libva.so.1 and
  * libva-drm.so.1 (1.9900.0). */
@@ -410,7 +411,8 @@ bool Decoder::State::configure(const mfxVideoParam &hdr, int variant)
     out.CropH = (mfxU16)h;
     /* Fit or fill by display aspect (sample aspect ratio included, 0 = square). */
     crop_x = in.CropX, crop_y = in.CropY, crop_w = in.CropW, crop_h = in.CropH;
-    if (out_w && in.CropW && in.CropH) {
+    /* g_stretch (player.cpp, MGU_STRETCH=1): the whole source scaled to w x h, its shape not kept */
+    if (out_w && in.CropW && in.CropH && !g_stretch) {
         const double sar = in.AspectRatioW && in.AspectRatioH ? (double)in.AspectRatioW / in.AspectRatioH : 1.0;
         const double src = (double)in.CropW * sar / in.CropH, dst = (double)w / h;
         /* aurelm-emby: a film is fitted whole (black bars), cropped only with fill */
