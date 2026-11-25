@@ -19,3 +19,12 @@ iDrive 7 · package `mas_carburante` · needs internet from the Store (mgu-uplin
   (`phone.js`; the head unit's firewall drops incoming connections, so the phone cannot reach the car directly).
   The topic is random, made on the car and shown on the *Collega iPhone* page, never in this repository. Without a
   position of the last 60 minutes, the zone in the settings is used, as before.
+
+## Prezzi in salita o in calo (0.6.0)
+
+Every day's prices of the stations around are kept 15 days (`storico.json`). The line under the status compares
+them with the day before: when a fifth of the stations raised their price (twice as many as lowered it) the others
+usually follow within 1-3 days, so *fill up today*; when as many lowered it, *wait 1-2 days if the range allows*;
+otherwise the week's median drift, or *stable*. The first advice comes the day after the first download. With the
+range under twice the range notice and prices rising: one notification a day (setting *Avvisami se i prezzi salgono*).
+It is an estimate from the stations' own moves, not a forecast.

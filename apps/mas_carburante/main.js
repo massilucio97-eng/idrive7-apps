@@ -19,6 +19,11 @@
  * fatto benzina in questi" keeps the refuel without one. Screen DIARY: the real consumption, cost per km, the
  * month's spend and the last refuels. Kept in <data>/diario.json.
  *
+ * Trend (trend.js): each day's prices of the zone's stations are kept 15 days (<data>/storico.json); the line under
+ * the status says whether the stations around are raising or lowering their prices since the day before (the others
+ * usually follow within 1-3 days), so whether to fill up today or wait. With the range under twice the range notice,
+ * a notification once a day when the prices are rising.
+ *
  * Read only: nothing is written to the car. Node 8: no ?., ?? or object spread.
  */
 const fs = require('fs');
@@ -29,6 +34,7 @@ const fuelHttp = require('./fuel_http');
 const LOG = require('./fuellog');
 const PHONE = require('./phone');
 const NOTIFY = require('./notify');
+const TR = require('./trend');
 
 const FILES = { stations: '/images/exportCSV/anagrafica_impianti_attivi.csv', prices: '/images/exportCSV/prezzo_alle_8.csv' };
 const ROWS = 10;
@@ -65,8 +71,16 @@ mgu.run({
             catch (e) { log.warn('diario.json not written: ' + e.message); }
         };
 
+        const histFile = path.join(ctx.dataDir || '.', 'storico.json');
+        let hist = { days: {} }, trend = null;
+        try { hist = JSON.parse(fs.readFileSync(histFile, 'utf8')); if (!hist || !hist.days) hist = { days: {} }; } catch (e) { hist = { days: {} }; }
+        const saveHist = () => {
+            try { fs.writeFileSync(histFile + '.tmp', JSON.stringify(hist)); fs.renameSync(histFile + '.tmp', histFile); }
+            catch (e) { log.warn('storico.json not written: ' + e.message); }
+        };
         try { zone = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); log.info('zone.json: ' + zone.comune + ', ' + Object.keys(zone.stations || {}).length + ' stations'); }
         catch (e) { zone = null; }
+        if (zone && zone.pricesDate && !hist.days[zone.pricesDate]) { hist = TR.record(hist, zone.pricesDate, zone); saveHist(); }
 
         const choice = () => ({
             fuel: M.FUELS[settings.get('fuel')] ? settings.get('fuel') : 'benzina',
@@ -112,6 +126,12 @@ mgu.run({
                 info = head + ' · ' + (busy ? 'scarico i prezzi...' : 'nessun dato: premi Aggiorna');
             }
             shown = list;
+            trend = sz && sz.zone.centre ? TR.compute(hist, sz.zone, Object.assign({}, c, { from: sz.from })) : null;
+            if (trend) ui.text('TREND_INFO', trend.line);
+            else ui.text('TREND_INFO', Object.keys(hist.days).length < 2 ? 'Andamento prezzi: raccolgo i prezzi di ogni giorno, da domani ti dico se in zona salgono o scendono'
+                : 'Andamento prezzi: pochi distributori da confrontare con ieri');
+            ui.visible('TREND_INFO', !!(sz && sz.zone.centre));
+            maybeTrendAlert();
             const pend = LOG.pending(diary);
             if (pend) {
                 ui.text('LOG_INFO', 'Rifornimento trovato: +' + num1(pend.litres) + ' l a ' + kmInt(pend.km) + ' km. Tocca il distributore dove hai fatto benzina');
@@ -163,6 +183,7 @@ mgu.run({
                     log.info('prices: ' + Object.keys(pr.prices).length + ' stations with prices (' + Math.round(nb2 / 1024) + ' KB)');
                 }
                 zone = { comune: p ? 'GPS' : c.zone, gps: !!p, fetchedAt: Date.now(), stationsDate: z.date, pricesDate: pr.date, centre: z.centre, stations: z.stations, prices: pr.prices };
+                if (pr.date) { hist = TR.record(hist, pr.date, zone); saveHist(); log.info('storico: ' + Object.keys(hist.days).join(', ')); }
                 try { fs.writeFileSync(cacheFile + '.tmp', JSON.stringify(zone)); fs.renameSync(cacheFile + '.tmp', cacheFile); }
                 catch (e) { log.warn('zone.json not written: ' + e.message); }
                 log.info('refresh done in ' + Math.round((Date.now() - t0) / 1000) + ' s');
@@ -174,6 +195,16 @@ mgu.run({
             render();
         }
 
+        /** Prices rising and the range under twice the range notice's: one notification a day (diary.trendAlerted: the day). */
+        function maybeTrendAlert() {
+            if (!trend || trend.kind !== 'up' || settings.get('trendAlert') === false || !zone || !zone.pricesDate) return;
+            const thr = Number(settings.get('rangeAlert')) || 80;
+            if (lastRange === null || lastRange >= 2 * thr || diary.trendAlerted === zone.pricesDate) return;
+            diary.trendAlerted = zone.pricesDate; saveDiary();
+            const b = shown[0];
+            notifier.alert('Prezzi in salita', trend.short + ' Autonomia ' + lastRange + ' km.' + (b ? ' Il più economico: ' + euro(b.price) + ' · ' + (b.brand || 'Pompa bianca') + ', ' + title(b.addr) + '.' : ''), ['chart_with_upwards_trend', 'fuelpump'], 3);
+        }
+
         /** The summary for the widget (notify.js sends it only when it changed). */
         function publishState(list) {
             const sm = LOG.summary(diary, Date.now()), tm = LOG.tripsMonth(diary, Date.now()), lt = diary.lastClosed, b = list && list[0], c = choice();
@@ -182,6 +213,7 @@ mgu.run({
                 month: { litres: sm.month.litres, eur: sm.month.eur, trips: tm.count, km: tm.km, tripsEur: tm.eur },
                 lastTrip: lt ? { at: lt.start, km: lt.km, litres: lt.litres, eur: lt.eur } : null,
                 best: b ? { price: b.price, brand: b.brand || 'Pompa bianca', addr: title(b.addr), comune: title(b.comune), km: b.km } : null,
+                trend: trend ? { kind: trend.kind, text: trend.short } : null,
                 range: lastRange, odometer: diary.last ? diary.last.km : null, level: diary.last ? diary.last.level : null,
             } });
         }
@@ -257,7 +289,8 @@ mgu.run({
                         if (thr && range < thr && !diary.rangeAlerted) {
                             diary.rangeAlerted = true;
                             const b = shown[0];
-                            notifier.alert('Autonomia ' + range + ' km', b ? 'Il più economico vicino: ' + euro(b.price) + ' · ' + (b.brand || 'Pompa bianca') + ', ' + title(b.addr) + ' (' + kmText(b.km) + ')' : 'Fai benzina presto.', ['warning', 'fuelpump'], 4);
+                            notifier.alert('Autonomia ' + range + ' km', (b ? 'Il più economico vicino: ' + euro(b.price) + ' · ' + (b.brand || 'Pompa bianca') + ', ' + title(b.addr) + ' (' + kmText(b.km) + ')' : 'Fai benzina presto.') +
+                                (trend ? ' ' + trend.short : ''), ['warning', 'fuelpump'], 4);
                         } else if (thr && range > thr + 30 && diary.rangeAlerted) diary.rangeAlerted = false;
                     }
                     if (what) { log.info('refuel ' + what + ': ' + JSON.stringify(diary.refuels[diary.refuels.length - 1])); saveDiary(); render(); }
