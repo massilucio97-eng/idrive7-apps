@@ -15,3 +15,8 @@ renderer, with "host from layers" (cluster-render PROTOCOL.md).
   cauliflowermossgrape's Redline does). The time to the destination is not proven yet: *Diagnostica percorso*
   lists the car catalog's entries that could carry it, for the next version.
 - Images only, no shaders (a heavy shader once restarted a cluster: Redline README).
+- **Full screen or BMW's:** *Mappa a tutto schermo* (or the button on the app's page) switches between the larger map
+  and the map as BMW draws it.
+- **Next turn card** (0.4.0), Waze-like at the top left: arrow, distance, street and "e poi" with the turn after,
+  decoded with cauliflowermossgrape's Redline decoder (`redline_nav.js`, MIT, `LICENSE.redline-nav`), proven with
+  CarPlay / Apple Maps; with Waze it is to be checked in the car.

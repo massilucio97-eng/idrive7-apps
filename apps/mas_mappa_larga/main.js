@@ -29,17 +29,22 @@ mgu.run({
 
         function tick() {
             const r = rect();
-            const strip = settings.get('strip') !== false ? route.line(ri.info(), Date.now()) : null;
+            const info = ri.info();
+            const strip = settings.get('strip') !== false ? route.line(info, Date.now()) : null;
+            const card = settings.get('card') !== false && info && info.turn ? Object.assign({}, info.turn, { then: info.then || null }) : null;
             const grid = settings.get('grid') === true && !parked.moving();
-            wide.update({ on: settings.get('wide') === true, grid: grid, rect: r, strip: strip, fade: Number(settings.get('fade')) || 0, shape: Number(settings.get('shape')) || 0 });
+            wide.update({ on: settings.get('wide') === true, grid: grid, rect: r, strip: strip, card: card, fade: Number(settings.get('fade')) || 0, shape: Number(settings.get('shape')) || 0 });
             if (strip !== lastStrip) lastStrip = strip;
             if (ui.isVisible('MAIN')) {
                 ui.text('STATUS', wide.view() + (settings.get('grid') === true && parked.moving() ? ' · griglia nascosta in marcia' : ''));
-                ui.text('ROUTE', 'Percorso: ' + ri.status() + (strip ? ' · ' + strip : ''));
+                ui.text('ROUTE', 'Percorso: ' + ri.status() + (card ? ' · svolta: ' + (card.dist ? card.dist + ' ' + card.unit + ' ' : '') + (card.dir || card.kind) : '') + (strip ? ' · ' + strip : ''));
+                ui.text('BTN_MODE', settings.get('wide') === true ? 'Passa alla mappa BMW normale' : 'Passa alla mappa a tutto schermo');
                 ui.text('RECT', 'Rettangolo ' + r.x + ',' + r.y + '  ' + r.w + ' x ' + r.h + ' px (quadro 1920 x 720)');
             }
         }
         settings.onChange(() => tick());
+        // one press: full screen <-> as BMW draws it (the same as the setting)
+        ui.onClick('BTN_MODE', () => { settings.set('wide', settings.get('wide') !== true); tick(); });
         ui.onClick('BTN_DIAG', () => {
             const info = ri.info();
             ui.text('DIAG_1', 'Percorso: ' + ri.status() + (info ? ' · ' + Math.round(info.metres) + ' m all\'arrivo' +

@@ -21,7 +21,7 @@ const { Canvas } = require('./kit/canvas');
 
 const PANEL_W = 1920, PANEL_H = 720, MAP_W = 1088, MAP_H = 480;
 const RECONNECT_MS = 8000, STATUS_MS = 2000, RADIUS = 22;
-const STRIP_W = 560, STRIP_H = 64;
+const STRIP_W = 560, STRIP_H = 64, CARD_W = 440, CARD_H = 176;
 
 /** The part of the 1088 x 480 map that fills rect r without stretching (centred): { src_x, src_y, src_w, src_h }. */
 function crop(r) {
@@ -44,8 +44,8 @@ class WideMap {
         this.log = o.log; this.app = o.app;
         this.cr = null; this.ready = false; this.err = null; this.downAt = 0;
         this.want = { on: false, grid: false, rect: null, strip: null };
-        this.refs = { frame: 0, strip: 0, grid: 0 };
-        this.drawn = { frame: null, strip: null, grid: null };
+        this.refs = { frame: 0, strip: 0, grid: 0, card: 0 };
+        this.drawn = { frame: null, strip: null, grid: null, card: null };
         this.mapSeen = {}; this.mapLive = false; this.hosted = false; this.hosting = ''; this.hostKey = ''; this.vis = {};
     }
 
@@ -75,7 +75,7 @@ class WideMap {
         try { cr = this.cr = new c.ClusterRender(this.app, c.sock); } catch (e) { this.err = { text: e.message }; this.errAt = now; this.cr = null; return; }
         cr.on('ready', () => {
             if (this.cr !== cr) return;
-            this.ready = true; this.refs = { frame: 0, strip: 0, grid: 0 }; this.drawn = { frame: null, strip: null, grid: null }; this.hosted = false; this.vis = {};
+            this.ready = true; this.refs = { frame: 0, strip: 0, grid: 0, card: 0 }; this.drawn = { frame: null, strip: null, grid: null, card: null }; this.hosted = false; this.vis = {};
             this.log.info('cluster: connected, host from layers ' + (cr.hostLayers ? 'yes' : 'NO (update the Cluster renderer)'));
             this._apply();
         });
@@ -156,6 +156,13 @@ class WideMap {
             const g = { x: r.x + Math.round((r.w - STRIP_W) / 2), y: r.y + r.h - STRIP_H - 10, w: STRIP_W, h: STRIP_H };
             if (this._image('strip', g, 'overlay', 20, (cw, ch) => stripImage(cw, ch, w.strip), w.strip)) this._show('strip', true);
         } else this._show('strip', false);
+        // the next turn, Waze-like, at the rect's top left (inside the shading)
+        const card = active && w.card && r ? cardKey(w.card) : null;
+        if (card) {
+            const inset = Math.max(24, Math.round(fade * 0.6));
+            const g = { x: r.x + inset + (shape > 2 ? Math.round(r.w * 0.06) : 0), y: r.y + Math.round(inset * 0.6), w: CARD_W, h: CARD_H };
+            if (this._image('card', g, 'overlay', 21, (cw, ch) => cardImage(cw, ch, w.card), card)) this._show('card', true);
+        } else this._show('card', false);
         // the test grid (parked only: main.js)
         if (w.grid && r) {
             if (this._image('grid', { x: 0, y: 0, w: PANEL_W, h: PANEL_H }, 'overlay', 30, (cw, ch) => gridImage(cw, ch, r, shape), 'g' + [r.x, r.y, r.w, r.h, shape].join(','))) this._show('grid', true);
@@ -169,7 +176,7 @@ class WideMap {
             Object.keys(this.refs).forEach((k) => { try { if (this.refs[k]) this.cr.drop(this.refs[k]); } catch (e) { /* gone */ } });
             try { this.cr.close(); } catch (e) { /* closing */ }
         }
-        this.cr = null; this.ready = false; this.hosted = false; this.refs = { frame: 0, strip: 0, grid: 0 };
+        this.cr = null; this.ready = false; this.hosted = false; this.refs = { frame: 0, strip: 0, grid: 0, card: 0 };
     }
 }
 
@@ -210,6 +217,71 @@ function frameImage(w, h, fade, shape) {
             const i = (y * w + x) * 4;
             d[i] = SHADE[0]; d[i + 1] = SHADE[1]; d[i + 2] = SHADE[2]; d[i + 3] = Math.round(a * 255);
         }
+    }
+    return c;
+}
+
+/** What the card shows, as a key: changes only when the picture would. */
+function cardKey(t) {
+    return [t.kind, t.dir, t.exit, t.dist, t.unit, t.road, t.then ? t.then.kind + t.then.dir : ''].join('|');
+}
+
+/** The turn's angle, degrees clockwise from straight on (0), or null for none (a dot). */
+function angleOf(t) {
+    const d = String(t.dir || '');
+    if (t.kind === 'keep' || t.kind === 'lanechange' || /FORK|BRANCH|HIGHWAY_OUT/.test(d)) return /LEFT/.test(d) ? -40 : /RIGHT/.test(d) ? 40 : 0;
+    if (/UTURN/.test(d)) return /LEFT/.test(d) ? -180 : 180;
+    const side = /LEFT/.test(d) ? -1 : /RIGHT/.test(d) ? 1 : 0;
+    if (!side) return /STRAIGHT|HIGHWAY_IN/.test(d) || t.kind === 'turn' ? 0 : null;
+    return side * (/SLIGHT/.test(d) ? 45 : /HARD/.test(d) ? 135 : 90);
+}
+
+/** A white turn arrow in box s x s at (x, y). */
+function arrow(c, x, y, s, t) {
+    const W = '#ffffff', lw = s * 0.13, cx = x + s / 2, base = y + s * 0.95, mid = y + s * 0.5;
+    if (t.kind === 'destination') {           // a chequered flag
+        c.line(x + s * 0.3, y + s * 0.1, x + s * 0.3, base, lw * 0.7, W);
+        for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) if ((i + j) % 2 === 0) c.fillRect(x + s * 0.3 + j * s * 0.13, y + s * 0.1 + i * s * 0.12, s * 0.13, s * 0.12, W);
+        return;
+    }
+    if (t.kind === 'roundabout') {
+        c.arc(cx, y + s * 0.42, s * 0.2, s * 0.2 + lw * 0.8, 0, 360, W);
+        c.line(cx, base, cx, y + s * 0.64, lw, W);
+        if (t.exit) c.text(String(t.exit), cx, y + s * 0.42 + s * 0.12, s * 0.32, W, { align: 'center', literal: true });
+        return;
+    }
+    const a = angleOf(t);
+    if (a === null) { c.circle(cx, mid, s * 0.14, W); return; }
+    if (Math.abs(a) === 180) {                // U-turn: up, over, back down
+        const dx = a > 0 ? s * 0.3 : -s * 0.3, r = Math.abs(dx) / 2, pts = [];
+        for (let k = 0; k <= 12; k++) { const t2 = Math.PI * k / 12; pts.push([cx + (a > 0 ? 1 : -1) * (r - Math.cos(t2) * r), y + s * 0.35 - Math.sin(t2) * r]); }
+        c.line(cx, base, cx, y + s * 0.35, lw, W); c.polyline(pts, lw, W); c.line(cx + dx, y + s * 0.35, cx + dx, y + s * 0.6, lw, W);
+        c.triangle([[cx + dx - s * 0.16, y + s * 0.56], [cx + dx + s * 0.16, y + s * 0.56], [cx + dx, y + s * 0.8]], W);
+        return;
+    }
+    const rad = a * Math.PI / 180, len = s * 0.34;
+    const ex = cx + Math.sin(rad) * len, ey = mid - Math.cos(rad) * len;
+    c.line(cx, base, cx, mid, lw, W); c.line(cx, mid, ex, ey, lw, W);
+    const hx = Math.sin(rad), hy = -Math.cos(rad), px = -hy, py = hx, hs = s * 0.2;
+    c.triangle([[ex + hx * hs, ey + hy * hs], [ex + px * hs * 0.8, ey + py * hs * 0.8], [ex - px * hs * 0.8, ey - py * hs * 0.8]], W);
+}
+
+/** The next-turn card, as Waze draws it: the arrow, the distance big, the street under it, "e poi" with the next one. */
+function cardImage(w, h, t) {
+    const c = new Canvas(w, h);
+    c.clear([0, 0, 0, 0]);
+    const thenH = t.then ? 44 : 0, top = h - thenH;
+    c.roundRect(0, 0, w, h, 26, [10, 10, 12, 235]);
+    arrow(c, 22, 18, 96, t);
+    const dist = t.dist ? t.dist + ' ' + t.unit : t.kind === 'destination' ? 'Arrivo' : '';
+    c.text(dist, 140, 70, 52, '#ffffff', { literal: true });
+    let road = String(t.road || '').replace(/\s+/g, ' ').trim();
+    if (road.length > 26) road = road.slice(0, 25) + '…';
+    if (road) c.text(road, 140, top - 26, 30, '#ffffff', { literal: true });
+    if (t.then) {
+        c.fillRect(0, top, w, 1, [255, 255, 255, 60]);
+        c.text('e poi', 22, h - 13, 26, '#d0d0d0', { literal: true });
+        arrow(c, w - 60, top + 4, 36, t.then);
     }
     return c;
 }

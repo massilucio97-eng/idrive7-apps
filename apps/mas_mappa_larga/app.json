@@ -1,8 +1,8 @@
 {
   "id": "mas_mappa_larga",
   "title": "Mappa larga",
-  "description": "La mappa del telefono (Maps on cluster) più grande sul quadro: un rettangolo tra i due archi, sopra la velocità digitale e il consumo di BMW, mai sopra gli archi, la barra in basso o le spie. Con la riga di arrivo del percorso CarPlay. Si regola da fermi con la griglia di prova. Richiede Maps on cluster (robertnisipeanu/idrive-apps).",
-  "version": "0.3.0",
+  "description": "La mappa del telefono (Maps on cluster) più grande sul quadro: un rettangolo tra i due archi, sopra la velocità digitale e il consumo di BMW, mai sopra gli archi, la barra in basso o le spie. Con il riquadro della prossima svolta e la riga di arrivo del percorso CarPlay (Waze), e un tasto per passare tra tutto schermo e mappa BMW normale. Si regola da fermi con la griglia di prova. Richiede Maps on cluster (robertnisipeanu/idrive-apps).",
+  "version": "0.4.0",
   "vendor": "mas",
   "loggingId": "MSM1",
   "mguHmi": [
@@ -39,6 +39,11 @@
           "text",
           "STATUS",
           "..."
+        ],
+        [
+          "button",
+          "BTN_MODE",
+          "Passa alla mappa a tutto schermo"
         ],
         [
           "text",
@@ -78,9 +83,15 @@
   "settings": [
     {
       "key": "wide",
-      "label": "Mappa larga sul quadro",
+      "label": "Mappa a tutto schermo (altrimenti mappa BMW normale)",
       "type": "bool",
       "default": false
+    },
+    {
+      "key": "card",
+      "label": "Riquadro della prossima svolta (stile Waze)",
+      "type": "bool",
+      "default": true
     },
     {
       "key": "strip",

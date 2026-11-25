@@ -13,6 +13,7 @@
  * Node 8: no ?., ?? or object spread. Never throws.
  */
 const fs = require('fs');
+const NAV = require('./redline_nav');
 
 const EVENT_LIST = { iface: 'de.bmw.infotainment.navigation.guiding.GuidanceEventList', inst: 'Main_Instance', method: 'queryContent' };
 const CARPLAY = { iface: 'de.bmw.infotainment.a4a.carplay.CarPlayManager', inst: 'CarPlayManagerInst1' };
@@ -36,7 +37,9 @@ function walk(v, fn, depth) {
     Object.keys(v).forEach((k) => { fn(k, v[k]); walk(v[k], fn, depth + 1); });
 }
 
-/** A reply -> { metres, seconds, arrival, keys } (null where none). metres: the smallest distanceToDestination. */
+/** A reply -> { metres, seconds, arrival, keys, turn, then } (null where none). metres: the smallest
+ * distanceToDestination; turn / then: the next turn and the one after it, as Redline's decoder gives them
+ * ({ kind, dir, dist, unit, road, exit, ... }). */
 function parse(reply) {
     let metres = null, seconds = null, arrival = null;
     const keys = {};
@@ -46,12 +49,17 @@ function parse(reply) {
         if (TIME_KEY.test(k) && n !== null && n >= 0 && n < 360000) { seconds = n; keys[k] = n; }
         if (ARRIVAL_KEY.test(k)) { arrival = v; keys[k] = v; }
     }, 0);
-    return { metres: metres, seconds: seconds, arrival: arrival, keys: keys };
+    let turn = null, then = null;
+    try {
+        const ev = NAV.decodeEvents(reply);
+        if (ev.ok) { turn = ev.events[0] || null; then = ev.events[1] || null; }
+    } catch (e) { /* no turn */ }
+    return { metres: metres, seconds: seconds, arrival: arrival, keys: keys, turn: turn, then: then };
 }
 
 /** The arrival line as Waze writes it: "14:55 arrivo · 7 min · 1,5 km" (what is known of it). now: ms. */
 function line(info, now) {
-    if (!info || info.metres === null) return null;
+    if (!info || info.metres === null || info.metres === undefined) return null;
     const parts = [];
     if (info.seconds !== null) {
         const t = new Date(now + info.seconds * 1000);
@@ -86,7 +94,7 @@ function start(ctx, log) {
             .then((reply) => {
                 const r = parse(reply);
                 fails = 0; error = null;
-                if (r.metres !== null) { last = r; lastAt = Date.now(); }
+                if (r.metres !== null || r.turn) { last = r; lastAt = Date.now(); }
                 const k = Object.keys(r.keys).sort().join(',');
                 if (k !== loggedKeys) { loggedKeys = k; log.info('route: time fields in the reply: ' + (k || 'none')); }
             }, (e) => {
