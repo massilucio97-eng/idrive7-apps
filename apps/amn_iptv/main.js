@@ -158,7 +158,9 @@ mgu.run({
             setInterval(guard('poll', poll), 1500);
             poll();
             // what the service plays: sound and picture settings
-            const sendPrefs = () => svc.ask({ cmd: 'prefs', gain: Number(settingsGet('gain')) || 0, subs: true, even: false, stretch: settingsGet('picture') === 'stretch' }).catch(() => {});
+            const sendPrefs = () => svc.ask({ cmd: 'prefs', gain: Number(settingsGet('gain')) || 0, subs: true, even: false, stretch: settingsGet('picture') === 'stretch',
+                // Stretch: the picture made the shape it is shown in, the whole screen (1920 x 720) or the app's page
+                size: fullOn ? '1920x720' : '1600x520' }).catch(() => {});
             setTimeout(sendPrefs, 1500);
             settings.onChange(guard('settings', (k) => {
                 if (k === 'gain') sendPrefs();
@@ -345,7 +347,12 @@ mgu.run({
             const FULL_FILE = path.join(ctx.dataDir, 'fullscreen.json');
             let fullOn = true;
             try { fullOn = JSON.parse(fs.readFileSync(FULL_FILE, 'utf8')).on !== false; } catch (e) { /* first run: full screen */ }
-            function setFull(on) { fullOn = !!on; try { fs.writeFileSync(FULL_FILE, JSON.stringify({ on: fullOn })); } catch (e) { /* kept for this run */ } }
+            function setFull(on) {
+                fullOn = !!on;
+                try { fs.writeFileSync(FULL_FILE, JSON.stringify({ on: fullOn })); } catch (e) { /* kept for this run */ }
+                // Stretch's picture is made the shape of where it shows: again for the new place
+                if (settingsGet('picture') === 'stretch') sendPrefs().then(() => { if (playingCh && !playingFilm) svc.ask({ cmd: 'play', id: playingCh.id, name: playingCh.name }).catch(() => {}); });
+            }
             const fvWanted = () => fullOn && page === 'player' && ui.isVisible('MAIN') && !ui.isVisible('SETTINGS') && (!ui.hasFocus || ui.hasFocus('MAIN'));
             // while the full view is up the page's own layer is hidden: mgu-render puts a layer on top when its connection
             // makes it, and the page's reconnects (the kit app sent back and forth) put it back over the picture, black,

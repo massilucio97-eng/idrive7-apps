@@ -215,8 +215,9 @@ function createService(opts) {
         else if (m.ev === 'categories') cats = { at: m.at, categories: m.categories || [] };
         else if (m.ev === 'answer' && asks[m.id]) { asks[m.id](m); delete asks[m.id]; }
         else if (m.ev === 'player-start') {
-            // Picture size "stretch" (app setting): the player makes the picture the screen's shape, 1600x520
-            const fe = filmEnv(m.env), se = prefs && prefs.stretch ? { MGU_STRETCH: '1', MGU_VIDEO_SIZE: '1600x520' } : null;
+            // Picture size "stretch" (app setting): the player makes the picture the shape it is shown in (the app's
+            // size: the whole screen, 1920x720, or the app's page, 1600x520)
+            const fe = filmEnv(m.env), se = prefs && prefs.stretch ? { MGU_STRETCH: '1', MGU_VIDEO_SIZE: prefs.size || '1920x720' } : null;
             player.start(m.id, fe || se ? Object.assign({}, fe || {}, se || {}) : null);
         }
         else if (m.ev === 'player-ctl') player.ctl(m.id, m.line);
@@ -400,8 +401,9 @@ function createService(opts) {
         } else if (cmd === 'prefs') {
             const g = Number(m.gain);
             const p = { profile: 'ts', adaptive: false, subs: m.subs !== false,
-                gain: isFinite(g) ? Math.max(0, Math.min(15, g)) : 9, even: m.even === true, stretch: m.stretch === true };
-            if (!prefs || p.profile !== prefs.profile || p.adaptive !== prefs.adaptive || p.subs !== prefs.subs || p.gain !== prefs.gain || p.even !== prefs.even || p.stretch !== prefs.stretch) {
+                gain: isFinite(g) ? Math.max(0, Math.min(15, g)) : 9, even: m.even === true, stretch: m.stretch === true,
+                size: /^\d{2,4}x\d{2,4}$/.test(String(m.size || '')) ? String(m.size) : '1920x720' };
+            if (!prefs || p.profile !== prefs.profile || p.adaptive !== prefs.adaptive || p.subs !== prefs.subs || p.gain !== prefs.gain || p.even !== prefs.even || p.stretch !== prefs.stretch || p.size !== prefs.size) {
                 prefs = p;
                 try { writeJson('prefs.json', prefs); } catch (e) { log('prefs: ' + e.message); }
                 toChild({ op: 'prefs', prefs });
