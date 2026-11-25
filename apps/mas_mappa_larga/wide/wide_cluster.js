@@ -135,8 +135,8 @@ class WideMap {
         const w = this.want, r = w.rect;
         const active = !!(w.on && r && this.mapLive && this.cr.hostLayers);
         // the rect's frame: the anchor the map is drawn under
-        const fade = w.fade || 0, shape = w.shape || 0;
-        if (r && (active || w.grid)) this._image('frame', r, 'content', 10, (cw, ch) => frameImage(cw, ch, fade, shape), r.w + 'x' + r.h + 'f' + fade + 's' + shape);
+        const fade = w.fade || 0, shape = w.shape || 0, edge = w.edge || 'auto';
+        if (r && (active || w.grid)) this._image('frame', r, 'content', 10, (cw, ch) => frameImage(cw, ch, fade, shape, edge), r.w + 'x' + r.h + 'f' + fade + 's' + shape + edge);
         if (active) {
             const key = [r.x, r.y, r.w, r.h].join(',');
             if (!this.hosted || this.hostKey !== key) {
@@ -182,7 +182,18 @@ class WideMap {
 
 /* ---------- the pictures ---------- */
 
-const SHADE = [7, 9, 12];      // the cluster's own near-black, so the faded edge melts into BMW's background
+const SHADE = [7, 9, 12];      // the cluster's own near-black, above and below the map (between the gauges' tops)
+const SIDE = [56, 55, 51];     // the gauges' inner faces, left and right of the map (measured on a night photo of a F40)
+
+/** The colour outside the shape at (u, v), each 0 at the centre to 1 at the rect's edge: edge 'black', 'grey', or
+ * 'auto', the gauges' grey where the pixel lies towards the left or right side, the near-black towards the top and
+ * bottom, so the corners show no square against either. */
+function shadeAt(edge, u, v) {
+    if (edge === 'black') return SHADE;
+    if (edge === 'grey') return SIDE;
+    const a = Math.pow(u, 6), b = Math.pow(v, 6), t = a + b > 1e-9 ? a / (a + b) : 0;
+    return [0, 1, 2].map((k) => Math.round(SHADE[k] + (SIDE[k] - SHADE[k]) * t));
+}
 
 /**
  * Over the map: transparent in the middle, darker towards the edges (fade px: the shading BMW draws round its own
@@ -190,7 +201,7 @@ const SHADE = [7, 9, 12];      // the cluster's own near-black, so the faded edg
  * "Forma": widest at mid height, flatter towards the top and bottom, as the space between the gauge arcs). Each
  * pixel's darkness follows its distance inside the shape, eased (smoothstep), so there is no visible line.
  */
-function frameImage(w, h, fade, shape) {
+function frameImage(w, h, fade, shape, edge) {
     const c = new Canvas(w, h);
     c.clear([0, 0, 0, 0]);
     const d = c.d, f = Math.max(0, fade || 0), n = shape > 2 ? shape : 0;
@@ -215,7 +226,8 @@ function frameImage(w, h, fade, shape) {
             else a = Math.max(0, Math.min(1, out + 1));
             if (a <= 0.004) continue;
             const i = (y * w + x) * 4;
-            d[i] = SHADE[0]; d[i + 1] = SHADE[1]; d[i + 2] = SHADE[2]; d[i + 3] = Math.round(a * 255);
+            const col = shadeAt(edge, Math.abs(x + 0.5 - hw) / hw, Math.abs(y + 0.5 - hh) / hh);
+            d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = Math.round(a * 255);
         }
     }
     return c;

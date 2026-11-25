@@ -33,7 +33,7 @@ mgu.run({
             const strip = settings.get('strip') !== false ? route.line(info, Date.now()) : null;
             const card = settings.get('card') !== false && info && info.turn ? Object.assign({}, info.turn, { then: info.then || null }) : null;
             const grid = settings.get('grid') === true && !parked.moving();
-            wide.update({ on: settings.get('wide') === true, grid: grid, rect: r, strip: strip, card: card, fade: Number(settings.get('fade')) || 0, shape: Number(settings.get('shape')) || 0 });
+            wide.update({ on: settings.get('wide') === true, grid: grid, rect: r, strip: strip, card: card, fade: Number(settings.get('fade')) || 0, shape: Number(settings.get('shape')) || 0, edge: settings.get('edge') || 'auto' });
             if (strip !== lastStrip) lastStrip = strip;
             if (ui.isVisible('MAIN')) {
                 ui.text('STATUS', wide.view() + (settings.get('grid') === true && parked.moving() ? ' · griglia nascosta in marcia' : ''));
