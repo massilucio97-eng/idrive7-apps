@@ -135,7 +135,8 @@ class WideMap {
         const w = this.want, r = w.rect;
         const active = !!(w.on && r && this.mapLive && this.cr.hostLayers);
         // the rect's frame: the anchor the map is drawn under
-        if (r && (active || w.grid)) this._image('frame', r, 'content', 10, (cw, ch) => frameImage(cw, ch), r.w + 'x' + r.h);
+        const fade = w.fade || 0;
+        if (r && (active || w.grid)) this._image('frame', r, 'content', 10, (cw, ch) => frameImage(cw, ch, fade), r.w + 'x' + r.h + 'f' + fade);
         if (active) {
             const key = [r.x, r.y, r.w, r.h].join(',');
             if (!this.hosted || this.hostKey !== key) {
@@ -174,20 +175,33 @@ class WideMap {
 
 /* ---------- the pictures ---------- */
 
-/** Transparent, with the corners outside a rounded rect dark (the map's corners rounded) and a thin edge. */
-function frameImage(w, h) {
+const SHADE = [7, 9, 12];      // the cluster's own near-black, so the faded edge melts into BMW's background
+
+/**
+ * Over the map: transparent in the middle, darker towards the edges (fade px: the shading BMW draws round its own
+ * map, "Bordi sfumati"), the corners rounded. fade 0: only the rounded corners. Each pixel's darkness follows its
+ * distance inside a rounded rect, eased (smoothstep), so there is no visible line.
+ */
+function frameImage(w, h, fade) {
     const c = new Canvas(w, h);
     c.clear([0, 0, 0, 0]);
-    const d = c.d;
-    const corner = (cx, cy, x0, y0) => {
-        for (let y = y0; y < y0 + RADIUS; y++) for (let x = x0; x < x0 + RADIUS; x++) {
-            const dist = Math.sqrt((x + 0.5 - cx) * (x + 0.5 - cx) + (y + 0.5 - cy) * (y + 0.5 - cy)) - RADIUS;
-            const a = Math.max(0, Math.min(1, dist + 0.5));
-            if (a > 0) { const i = (y * w + x) * 4; d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = Math.round(a * 255); }
+    const d = c.d, f = Math.max(0, fade || 0), rad = Math.max(RADIUS, Math.min(f, Math.min(w, h) / 2));
+    const hw = w / 2, hh = h / 2;
+    for (let y = 0; y < h; y++) {
+        const dy = Math.abs(y + 0.5 - hh) - (hh - rad);
+        for (let x = 0; x < w; x++) {
+            const dx = Math.abs(x + 0.5 - hw) - (hw - rad);
+            // signed distance to the rounded rect's edge (negative inside)
+            const out = Math.sqrt(Math.max(dx, 0) * Math.max(dx, 0) + Math.max(dy, 0) * Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - rad;
+            let a;
+            if (out >= 0) a = 1;
+            else if (f > 0) { const t = Math.min(1, -out / f); a = 1 - t * t * (3 - 2 * t); }
+            else a = Math.max(0, Math.min(1, out + 1));
+            if (a <= 0.004) continue;
+            const i = (y * w + x) * 4;
+            d[i] = SHADE[0]; d[i + 1] = SHADE[1]; d[i + 2] = SHADE[2]; d[i + 3] = Math.round(a * 255);
         }
-    };
-    corner(RADIUS, RADIUS, 0, 0); corner(w - RADIUS, RADIUS, w - RADIUS, 0);
-    corner(RADIUS, h - RADIUS, 0, h - RADIUS); corner(w - RADIUS, h - RADIUS, w - RADIUS, h - RADIUS);
+    }
     return c;
 }
 
