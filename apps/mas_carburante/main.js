@@ -14,6 +14,11 @@
  * or radius needs no download; changing the zone does. A new download at start and every 30 minutes when
  * the kept data is older than 6 hours, or with "Aggiorna i prezzi".
  *
+ * Diary (fuellog.js): the tank level and the odometer (KombiIF.statusRangeTankStatus, read every 10 s) find each
+ * refuel by themselves; the status line then asks where: a tap on the station in the list keeps its price, "Non ho
+ * fatto benzina in questi" keeps the refuel without one. Screen DIARY: the real consumption, cost per km, the
+ * month's spend and the last refuels. Kept in <data>/diario.json.
+ *
  * Read only: nothing is written to the car. Node 8: no ?., ?? or object spread.
  */
 const fs = require('fs');
@@ -21,6 +26,7 @@ const path = require('path');
 const mgu = require('./kit/mgu');
 const M = require('./mimit');
 const fuelHttp = require('./fuel_http');
+const LOG = require('./fuellog');
 
 const FILES = { stations: '/images/exportCSV/anagrafica_impianti_attivi.csv', prices: '/images/exportCSV/prezzo_alle_8.csv' };
 const ROWS = 10;
@@ -35,13 +41,24 @@ const title = (s) => String(s || '').toLowerCase().replace(/(^|[\s'(-])(\S)/g, (
 const dayMonth = (d) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ''); return m ? m[3] + '/' + m[2] : '?'; };
 /** "24/11/2026 07:15:00" -> "24/11" */
 const reportDay = (at) => { const m = /^(\d{2})\/(\d{2})\//.exec(at || ''); return m ? m[1] + '/' + m[2] : ''; };
+const num1 = (x) => x.toFixed(1).replace('.', ',');
+const kmInt = (k) => String(Math.round(k)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const dateText = (ms) => { const d = new Date(ms); return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2); };
+const KOMBI = 'de.bmw.infotainment.KombiIF';
 
 mgu.run({
     async start(ctx) {
         const { ui, settings, log } = ctx;
         const http = fuelHttp.client(ctx.dataDir);
         const cacheFile = path.join(ctx.dataDir || '.', 'zone.json');
-        let zone = null, busy = false, lastError = null;
+        let zone = null, busy = false, lastError = null, shown = [];
+        const diaryFile = path.join(ctx.dataDir || '.', 'diario.json');
+        let diary = LOG.empty(), carSignals = false, savedKm = null;
+        try { diary = JSON.parse(fs.readFileSync(diaryFile, 'utf8')); if (!diary.refuels) diary = LOG.empty(); } catch (e) { diary = LOG.empty(); }
+        const saveDiary = () => {
+            try { fs.writeFileSync(diaryFile + '.tmp', JSON.stringify(diary)); fs.renameSync(diaryFile + '.tmp', diaryFile); }
+            catch (e) { log.warn('diario.json not written: ' + e.message); }
+        };
 
         try { zone = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); log.info('zone.json: ' + zone.comune + ', ' + Object.keys(zone.stations || {}).length + ' stations'); }
         catch (e) { zone = null; }
@@ -71,6 +88,17 @@ mgu.run({
                 info = 'Nessun distributore registrato nel comune di ' + title(c.zone);
             } else {
                 info = head + ' · ' + (busy ? 'scarico i prezzi...' : 'nessun dato: premi Aggiorna');
+            }
+            shown = list;
+            const pend = LOG.pending(diary);
+            if (pend) {
+                ui.text('LOG_INFO', 'Rifornimento trovato: +' + num1(pend.litres) + ' l a ' + kmInt(pend.km) + ' km. Tocca il distributore dove hai fatto benzina');
+                ui.visible('BTN_SKIP', true);
+            } else {
+                const sm = LOG.summary(diary, Date.now());
+                ui.text('LOG_INFO', sm.l100 !== null ? 'Consumo reale ' + num1(sm.l100) + ' l/100 km' + (sm.eurKm !== null ? ' · ' + sm.eurKm.toFixed(3).replace('.', ',') + ' €/km' : '') +
+                    ' · questo mese ' + sm.month.eur.toFixed(2).replace('.', ',') + ' €' : carSignals ? 'Diario: il consumo compare dopo due rifornimenti' : 'Diario: aspetto il livello del serbatoio dall\'auto');
+                ui.visible('BTN_SKIP', false);
             }
             if (status) info += ' · ' + status;
             else if (lastError) info += ' · ultimo aggiornamento non riuscito: ' + lastError;
@@ -122,6 +150,62 @@ mgu.run({
             render();
         }
 
+        /* ---------- the diary ---------- */
+        function renderDiary() {
+            const sm = LOG.summary(diary, Date.now());
+            ui.text('DIARY_1', sm.l100 !== null ? 'Consumo reale medio ' + num1(sm.l100) + ' l/100 km' + (sm.lastL100 !== null ? ' · ultimo pieno ' + num1(sm.lastL100) : '') :
+                'Consumo reale: serve almeno un tratto di ' + LOG.MIN_KM + ' km tra due rifornimenti');
+            ui.text('DIARY_2', (sm.eurKm !== null ? 'Costo ' + sm.eurKm.toFixed(3).replace('.', ',') + ' €/km' : 'Costo al km: serve il prezzo di due rifornimenti') +
+                (sm.avgPrice !== null ? ' · prezzo medio ' + sm.avgPrice.toFixed(3).replace('.', ',') + ' €/l' : ''));
+            ui.text('DIARY_3', 'Questo mese ' + num1(sm.month.litres) + ' l, ' + sm.month.eur.toFixed(2).replace('.', ',') + ' € · rifornimenti salvati: ' + sm.count +
+                (diary.last ? ' · ora ' + num1(diary.last.level) + ' l, ' + kmInt(diary.last.km) + ' km' : ''));
+            const rs = diary.refuels;
+            for (let i = 0; i < 8; i++) {
+                const k = rs.length - 1 - i, r = rs[k], name = 'LOG_' + (i + 1);
+                if (!r) { ui.visible(name, false); continue; }
+                const lg = LOG.leg(diary, k);
+                ui.cells(name, 0, {
+                    Text1stRow: dateText(r.at) + '   ·   +' + num1(r.litres) + ' l' + (r.price ? '   ·   ' + (r.litres * r.price).toFixed(2).replace('.', ',') + ' € (' + r.price.toFixed(3).replace('.', ',') + ' €/l)' : '') +
+                        (lg ? '   ·   ' + num1(lg.l100) + ' l/100 km' : ''),
+                    Text2ndRow: kmInt(r.km) + ' km' + (lg ? ' · ' + kmInt(lg.km) + ' km dal precedente' : '') + ' · ' + (r.where || (r.skipped ? 'distributore non indicato' : 'distributore da indicare')),
+                });
+                ui.visible(name, true);
+            }
+            ui.visible('BTN_UNDO', rs.length > 0);
+        }
+        for (let i = 1; i <= ROWS; i++) {
+            const n = i;
+            ui.onClick('ROW_' + n, () => {
+                const s = shown[n - 1];
+                if (!s || !LOG.pending(diary)) return;
+                LOG.setStation(diary, s.price, (s.brand || 'Pompa bianca') + ', ' + title(s.addr) + ', ' + title(s.comune));
+                saveDiary();
+                log.info('refuel: station ' + s.id + ' at ' + s.price);
+                render();
+            });
+        }
+        ui.onClick('BTN_SKIP', () => { if (LOG.skip(diary)) { saveDiary(); render(); } });
+        ui.onClick('BTN_DIARY', () => { renderDiary(); ui.open('DIARY'); });
+        ui.onClick('BTN_UNDO', () => { const r = LOG.undo(diary); if (r) { saveDiary(); log.info('refuel removed: ' + r.km + ' km'); } renderDiary(); render(); });
+        // the car: tank level and odometer, every 10 s (as Live Data polls KombiIF)
+        if (ctx.signals && ctx.signals.watch) {
+            ctx.signals.watch(KOMBI, '1', {
+                statusRangeTankStatus: (v) => {
+                    if (!v) return;
+                    const km = v.mileageKilometre, level = v.fluidLevelFuelTank;
+                    if (!LOG.valid(km, level)) return;
+                    const first = !carSignals;
+                    carSignals = true;
+                    const what = LOG.reading(diary, km, level, Date.now());
+                    if (what) { log.info('refuel ' + what + ': ' + JSON.stringify(diary.refuels[diary.refuels.length - 1])); saveDiary(); render(); }
+                    else if (first) { saveDiary(); render(); }
+                    // the last reading is kept at every new km, so a refuel after the car is switched off is found at the next start
+                    else if (km !== savedKm) saveDiary();
+                    savedKm = km;
+                },
+            }, log, { pollMs: 10000 }).then((sub) => { log.info('KombiIF: ' + (sub && sub.error ? sub.error : 'watching')); }, (e) => log.warn('KombiIF: ' + e.message));
+        }
+
         ui.onClick('BTN_REFRESH', () => refresh('button'));
         settings.onChange((k) => {
             if (k === 'zone' && !fresh()) refresh('zone changed');
@@ -130,6 +214,6 @@ mgu.run({
         render();
         if (!fresh()) refresh('start');
         setInterval(() => { if (!fresh() && !busy) refresh('timer'); }, CHECK_MS);
-        setInterval(() => { if (ui.isVisible('MAIN') && !busy) render(); }, 60000);
+        setInterval(() => { if (ui.isVisible('MAIN') && !busy) render(); if (ui.isVisible('DIARY')) renderDiary(); }, 60000);
     },
 });

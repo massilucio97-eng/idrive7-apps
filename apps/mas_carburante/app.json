@@ -1,13 +1,22 @@
 {
   "id": "mas_carburante",
   "title": "Carburante",
-  "description": "I distributori più economici vicino a te, dai prezzi ufficiali del MIMIT (open data, aggiornati ogni giorno alle 8): carburante, self o servito, comune e raggio scelti nelle impostazioni. Solo lettura: non tocca l'auto. Internet dallo Store (mgu-uplink).",
-  "version": "0.1.0",
+  "description": "I distributori più economici vicino a te, dai prezzi ufficiali del MIMIT (open data, aggiornati ogni giorno alle 8), e il diario dei rifornimenti con il consumo reale: i rifornimenti li trova da sola dal livello del serbatoio e dal contachilometri, tu tocchi il distributore dove hai fatto benzina. Solo lettura: non scrive nulla sull'auto. Internet dallo Store (mgu-uplink).",
+  "version": "0.2.0",
   "vendor": "mas",
   "loggingId": "MSF1",
-  "mguHmi": ["ID7"],
+  "mguHmi": [
+    "ID7"
+  ],
+  "mguAppStartType": "autostart",
   "internet": true,
   "maxDiskUsage": 5242880,
+  "signals": {
+    "de.bmw.infotainment.KombiIF": {
+      "_optional": "the tank level (litres) and the odometer (km), for the refuelling diary",
+      "statusRangeTankStatus": "rs"
+    }
+  },
   "screens": [
     {
       "name": "MAIN",
@@ -15,19 +24,153 @@
       "title": "Carburante",
       "settings": true,
       "items": [
-        ["text", "MENU_INFO", "Carico i prezzi..."],
-        ["tworow", "ROW_1", ""],
-        ["tworow", "ROW_2", ""],
-        ["tworow", "ROW_3", ""],
-        ["tworow", "ROW_4", ""],
-        ["tworow", "ROW_5", ""],
-        ["tworow", "ROW_6", ""],
-        ["tworow", "ROW_7", ""],
-        ["tworow", "ROW_8", ""],
-        ["tworow", "ROW_9", ""],
-        ["tworow", "ROW_10", ""],
-        ["button", "BTN_REFRESH", "Aggiorna i prezzi"],
-        ["text", "MENU_SOURCE", "Fonte: MIMIT, Osservaprezzi carburanti (IODL 2.0)"]
+        [
+          "text",
+          "MENU_INFO",
+          "Carico i prezzi..."
+        ],
+        [
+          "text",
+          "LOG_INFO",
+          ""
+        ],
+        [
+          "button",
+          "BTN_SKIP",
+          "Non ho fatto benzina in questi"
+        ],
+        [
+          "tworow",
+          "ROW_1",
+          ""
+        ],
+        [
+          "tworow",
+          "ROW_2",
+          ""
+        ],
+        [
+          "tworow",
+          "ROW_3",
+          ""
+        ],
+        [
+          "tworow",
+          "ROW_4",
+          ""
+        ],
+        [
+          "tworow",
+          "ROW_5",
+          ""
+        ],
+        [
+          "tworow",
+          "ROW_6",
+          ""
+        ],
+        [
+          "tworow",
+          "ROW_7",
+          ""
+        ],
+        [
+          "tworow",
+          "ROW_8",
+          ""
+        ],
+        [
+          "tworow",
+          "ROW_9",
+          ""
+        ],
+        [
+          "tworow",
+          "ROW_10",
+          ""
+        ],
+        [
+          "button",
+          "BTN_REFRESH",
+          "Aggiorna i prezzi"
+        ],
+        [
+          "button",
+          "BTN_DIARY",
+          "Diario rifornimenti e consumo"
+        ],
+        [
+          "text",
+          "MENU_SOURCE",
+          "Fonte: MIMIT, Osservaprezzi carburanti (IODL 2.0)"
+        ]
+      ]
+    },
+    {
+      "name": "DIARY",
+      "kind": "list",
+      "title": "Diario rifornimenti",
+      "items": [
+        [
+          "text",
+          "DIARY_1",
+          ""
+        ],
+        [
+          "text",
+          "DIARY_2",
+          ""
+        ],
+        [
+          "text",
+          "DIARY_3",
+          ""
+        ],
+        [
+          "tworow",
+          "LOG_1",
+          ""
+        ],
+        [
+          "tworow",
+          "LOG_2",
+          ""
+        ],
+        [
+          "tworow",
+          "LOG_3",
+          ""
+        ],
+        [
+          "tworow",
+          "LOG_4",
+          ""
+        ],
+        [
+          "tworow",
+          "LOG_5",
+          ""
+        ],
+        [
+          "tworow",
+          "LOG_6",
+          ""
+        ],
+        [
+          "tworow",
+          "LOG_7",
+          ""
+        ],
+        [
+          "tworow",
+          "LOG_8",
+          ""
+        ],
+        [
+          "button",
+          "BTN_UNDO",
+          "Cancella l'ultimo rifornimento"
+        ]
       ]
     }
   ],
@@ -37,28 +180,112 @@
       "label": "Carburante",
       "type": "choice",
       "default": "benzina",
-      "options": [["benzina", "Benzina"], ["gasolio", "Gasolio"], ["gpl", "GPL"], ["metano", "Metano"]]
+      "options": [
+        [
+          "benzina",
+          "Benzina"
+        ],
+        [
+          "gasolio",
+          "Gasolio"
+        ],
+        [
+          "gpl",
+          "GPL"
+        ],
+        [
+          "metano",
+          "Metano"
+        ]
+      ]
     },
     {
       "key": "mode",
       "label": "Servizio",
       "type": "choice",
       "default": "self",
-      "options": [["self", "Self"], ["servito", "Servito"], ["any", "Self o servito (il più basso)"]]
+      "options": [
+        [
+          "self",
+          "Self"
+        ],
+        [
+          "servito",
+          "Servito"
+        ],
+        [
+          "any",
+          "Self o servito (il più basso)"
+        ]
+      ]
     },
     {
       "key": "zone",
       "label": "Zona (centro del comune)",
       "type": "choice",
       "default": "RIVOLI",
-      "options": [["RIVOLI", "Rivoli"], ["COLLEGNO", "Collegno"], ["GRUGLIASCO", "Grugliasco"], ["ALPIGNANO", "Alpignano"], ["ROSTA", "Rosta"], ["ORBASSANO", "Orbassano"], ["AVIGLIANA", "Avigliana"], ["TORINO", "Torino"]]
+      "options": [
+        [
+          "RIVOLI",
+          "Rivoli"
+        ],
+        [
+          "COLLEGNO",
+          "Collegno"
+        ],
+        [
+          "GRUGLIASCO",
+          "Grugliasco"
+        ],
+        [
+          "ALPIGNANO",
+          "Alpignano"
+        ],
+        [
+          "ROSTA",
+          "Rosta"
+        ],
+        [
+          "ORBASSANO",
+          "Orbassano"
+        ],
+        [
+          "AVIGLIANA",
+          "Avigliana"
+        ],
+        [
+          "TORINO",
+          "Torino"
+        ]
+      ]
     },
     {
       "key": "radius",
       "label": "Raggio",
       "type": "choice",
       "default": "10",
-      "options": [["3", "3 km"], ["5", "5 km"], ["10", "10 km"], ["15", "15 km"], ["20", "20 km"]]
+      "options": [
+        [
+          "3",
+          "3 km"
+        ],
+        [
+          "5",
+          "5 km"
+        ],
+        [
+          "10",
+          "10 km"
+        ],
+        [
+          "15",
+          "15 km"
+        ],
+        [
+          "20",
+          "20 km"
+        ]
+      ]
     }
   ]
 }
