@@ -24,24 +24,44 @@ const qp = (args.queryParameters || {});
 if (qp.topic && /^tv-[a-z2-7]{20}$/.test(qp.topic)) Keychain.set(K.topic, qp.topic);
 
 /* ---------- setup ---------- */
+// Se la schermata iniziale non tiene i dati che scrivi, puoi metterli qui tra le virgolette (restano solo su questo iPhone):
+const CONFIG = {
+  server: "",      // es. "http://nomeserver.com:8080"
+  user: "",
+  pass: "",
+  topic: "",       // il canale dell'auto: IPTV > Telefono, es. "tv-xxxxxxxxxxxxxxxxxxxx"
+};
+
+/** One value at a time (one text field per alert: more reliable than four in one). */
+async function ask(title, message, placeholder, value, secure) {
+  const a = new Alert();
+  a.title = title; a.message = message;
+  if (secure) a.addSecureTextField(placeholder, value || ""); else a.addTextField(placeholder, value || "");
+  a.addAction("Avanti");
+  a.addCancelAction("Annulla");
+  if ((await a.present()) < 0) return null;
+  return tf(a, 0).trim();
+}
+
 async function setup(force) {
+  // the values written in CONFIG win, and are kept in the Keychain
+  if (CONFIG.server) Keychain.set(K.server, CONFIG.server.trim().replace(/\/+$/, ""));
+  if (CONFIG.user) Keychain.set(K.user, CONFIG.user.trim());
+  if (CONFIG.pass) Keychain.set(K.pass, CONFIG.pass);
+  if (/^tv-[a-z2-7]{20}$/.test(CONFIG.topic.trim().toLowerCase())) Keychain.set(K.topic, CONFIG.topic.trim().toLowerCase());
   let server = kget(K.server), user = kget(K.user), pass = kget(K.pass), topic = kget(K.topic);
   if (!force && server && user && pass && topic) return true;
-  const a = new Alert();
-  a.title = "IPTV Telecomando";
-  a.message = "Server, utente e password del tuo abbonamento Xtream, e il canale dell'auto (IPTV > Telefono, inizia con tv-).";
-  a.addTextField("http://server:porta", server);
-  a.addTextField("utente", user);
-  a.addSecureTextField("password", pass);
-  a.addTextField("tv-...", topic);
-  a.addAction("Salva");
-  a.addCancelAction("Annulla");
-  if ((await a.present()) < 0) return !!(server && user && pass && topic);
-  server = tf(a, 0).trim().replace(/\/+$/, "");
-  if (server && !/^https?:\/\//i.test(server)) server = "http://" + server;
-  user = tf(a, 1).trim(); pass = tf(a, 2); topic = tf(a, 3).trim().toLowerCase();
-  if (!server || !user || !pass) { await note("Inserisci server, utente e password del tuo abbonamento Xtream."); return false; }
-  if (!/^tv-[a-z2-7]{20}$/.test(topic)) { await note("Il canale non è valido: deve essere come tv-xxxxxxxxxxxxxxxxxxxx."); return false; }
+  let v;
+  if ((v = await ask("1 di 4 · Server", "L'indirizzo del tuo abbonamento Xtream, con la porta.", "http://server:porta", server)) === null) return false;
+  if (v) { server = v.replace(/\/+$/, ""); if (!/^https?:\/\//i.test(server)) server = "http://" + server; }
+  if ((v = await ask("2 di 4 · Utente", "Il nome utente dell'abbonamento.", "utente", user)) === null) return false;
+  if (v) user = v;
+  if ((v = await ask("3 di 4 · Password", "La password dell'abbonamento (resta nel Portachiavi dell'iPhone).", "password", "", true)) === null) return false;
+  if (v) pass = v;
+  if ((v = await ask("4 di 4 · Canale dell'auto", "In auto: IPTV > Telefono, il codice sotto il QR (inizia con tv-).", "tv-...", topic)) === null) return false;
+  if (v) topic = v.toLowerCase();
+  if (!server || !user || !pass) { await note("Mancano dei dati: server, utente o password. Se la schermata non li tiene, scrivili in CONFIG in cima allo script."); return false; }
+  if (!/^tv-[a-z2-7]{20}$/.test(topic)) { await note("Il canale non è valido: deve essere tv- seguito da 20 lettere e numeri, come in auto in IPTV > Telefono."); return false; }
   Keychain.set(K.server, server); Keychain.set(K.user, user); Keychain.set(K.pass, pass); Keychain.set(K.topic, topic);
   for (const f of fm.listContents(dir)) if (f.startsWith("cache_")) fm.remove(fm.joinPath(dir, f));
   return true;
