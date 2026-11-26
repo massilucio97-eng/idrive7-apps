@@ -46,6 +46,7 @@ const NOTIFY = require('./notify');
 const TR = require('./trend');
 const METEO = require('./meteo');
 const REPORT = require('./report');
+const APPLOG = require('./applog');
 const { createWelcome } = require('./welcome');
 const { RenderClient } = require('./kit/renderd');
 const record = require('./kit/record');
@@ -458,6 +459,17 @@ mgu.run({
         }
 
         ui.onClick('BTN_REFRESH', () => refresh('button'));
+        // the app's log to the phone (app ntfy, channel -avvisi), as a text file
+        let logMsg = '';
+        ui.onClick('BTN_LOGS', () => {
+            if (!http.online()) { logMsg = 'Log non inviati: auto offline'; ui.text('LOG_INFO_PHONE', logMsg); return; }
+            const text = APPLOG.tail(ctx.dataDir, 'mas_carburante', 600, ['canale: ' + phone.topic.slice(0, 8) + '…', 'stato: ' + phone.status() + ' · ' + notifier.status()]);
+            ui.text('LOG_INFO_PHONE', 'Invio i log...');
+            http.put('/' + phone.topic + '-avvisi', text, { title: 'Log di Carburante', message: 'Ultime righe del log dell\'app (resta scaricabile 3 ore): inoltralo per capire cosa non va.',
+                filename: 'carburante-log.txt', tags: 'page_facing_up' }).then((st) => {
+                logMsg = st === 200 ? 'Log inviati al telefono (app ntfy, canale -avvisi)' : 'Log non inviati: HTTP ' + st;
+            }, (e) => { logMsg = 'Log non inviati: ' + (e.message || e); }).then(() => ui.text('LOG_INFO_PHONE', logMsg));
+        });
         ui.onClick('BTN_PHONE', () => {
             ui.text('PHONE_1', 'Canale della tua auto: ' + phone.topic);
             ui.text('PHONE_2', 'Stato: ' + phone.status() + ' · ' + notifier.status() + ' · Nome nel benvenuto: ' + (who.name || 'nessuno'));
@@ -470,6 +482,7 @@ mgu.run({
                 '(Via e Città da "Ottieni dettagli della posizione"); aggiungi l\'automazione "CarPlay si disconnette" con le stesse azioni e il testo fine;Latitudine;Longitudine;Via;Città.\n' +
                 'Nome nel benvenuto: apri https://ntfy.sh/' + phone.topic + ' nel browser del telefono e invia "nome Massimo" (o il nome che vuoi; "nome -" per toglierlo): arriva in auto entro 30 secondi.\n' +
                 'La posizione resta valida 60 minuti; senza, l\'app usa la zona delle impostazioni. Il canale è segreto: non condividerlo (chi lo conosce può leggere la posizione inviata, ntfy.sh la tiene circa 12 ore).');
+            ui.text('LOG_INFO_PHONE', logMsg || 'Qualcosa non va? "Invia i log al telefono" e inoltrali: si capisce subito il problema');
             ui.open('PHONE');
         });
         settings.onChange((k) => {

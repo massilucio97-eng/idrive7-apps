@@ -93,7 +93,13 @@ function client(dataDir) {
             if (lookup) opts.lookup = lookup;
             const ca = uplink.trustedCa(dataDir);
             if (ca) opts.ca = ca;
-            const req = https.request(opts, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); res.on('error', reject); });
+            const req = https.request(opts, (res) => {
+                let b = '';
+                res.setEncoding('utf8');
+                res.on('data', (c) => { if (b.length < 8192) b += c; });
+                res.on('end', () => { put.lastBody = b; resolve(res.statusCode); });
+                res.on('error', reject);
+            });
             req.on('timeout', () => { req.abort(); reject(new Error('no answer from ntfy.sh')); });
             req.on('error', reject);
             req.end(data);

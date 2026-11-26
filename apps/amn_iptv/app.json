@@ -2,7 +2,7 @@
   "id": "amn_iptv",
   "title": "IPTV",
   "description": "The live TV channels, films and series of your own Xtream Codes IPTV account on the centre screen, in the style of UHF: favourites with what is on now, the TV guide, every category, search, and a full-screen player with the guide and the channel list over the picture. Sign in once from your phone (QR code): the login stays on this car's head unit, never in the app. The picture shows while parked (a setting lets a passenger watch while driving); the sound plays on the car's speakers; the steering wheel's skip changes the channel. Needs the IPTV service and a GPU renderer from the Store.",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "internet": true,
   "vendor": "amn",
   "loggingId": "OAI1",

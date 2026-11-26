@@ -65,3 +65,9 @@ row. Setting *Episodio successivo in automatico* (on by default). Episodes start
 The car's favourite channels go to the phone (`<topic>-preferiti`, on each change and every 6 h); a channel starred
 or unstarred on the phone is added or removed on the car ({ op: 'fav' }), which sends its list back. Films and
 series starred on the phone stay on the phone (the car's favourites are channels).
+
+## Log al telefono (0.5.3)
+
+On the page Telefono, *Invia i log al telefono* uploads the app's last 600 log lines and the IPTV service's last 60
+as a text file (ntfy.sh attachment on `<topic>-log`, kept 3 hours) and shows its link as the QR code: scanned with
+the phone, the file downloads, to forward. The page opens before signing in too.

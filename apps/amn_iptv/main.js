@@ -44,6 +44,7 @@ const KB = require('./keyboard');
 const qrcodegen = require('./qrcodegen');
 const { createRemote } = require('./remote');
 const uplink = require('./kit/uplink');
+const APPLOG = require('./applog');
 
 const VERSION = '0.4.5';
 const W = 1600, H = 520;
@@ -152,7 +153,7 @@ mgu.run({
                         cats = r.categories || []; catsAt = r.at;
                         if (catSel === null && cats.length) { const o = orderedCats(); catSel = (favs.length ? o[0] : cats.filter((c) => /qu[eé]bec/i.test(c.name))[0] || o[0]).id; }
                     }
-                    if (!signedIn() && page !== 'signin' && page !== 'soon') page = 'signin';
+                    if (!signedIn() && page !== 'signin' && page !== 'soon' && page !== 'phone') page = 'signin';
                     if (signedIn() && page === 'signin') { page = 'home'; say('Signed in'); }
                 } catch (e) {
                     svcErr = e.message; svcErrCode = e.code || null;
@@ -1268,6 +1269,15 @@ mgu.run({
                     else if (c.op === 'next-cancel' && nextUp) { nextUp = null; say('Prossimo episodio annullato dal telefono'); }
                 }) });
             remoteRef = remote;
+            // the app's log (and the service's last lines) to the phone: a link shown as a QR code
+            let logLink = null, logMsg = '';
+            function sendLogs() {
+                logMsg = 'Invio i log...'; logLink = null;
+                const svcLines = st && Array.isArray(st.log) ? st.log.slice(-60).map(String) : [];
+                const text = APPLOG.tail(ctx.dataDir, 'amn_iptv', 600, ['servizio IPTV:'].concat(svcLines));
+                remote.uploadLog(text, 'iptv-log.txt').then((url) => { logLink = url; logMsg = 'Inquadra il codice: si scarica il file dei log (3 ore)'; },
+                    (e) => { logMsg = 'Log non inviati: ' + e.message; });
+            }
             function drawPhone(cv, A, x0) {
                 const right = A.right, lx = x0 + 20, tw = Math.round((right - x0) * 0.55);
                 cv.text('Telecomando sul telefono', lx, A.y + 60, 36, C.text, B);
@@ -1277,13 +1287,18 @@ mgu.run({
                     '3.  La prima volta inserisci server, utente e password Xtream sul telefono.', '',
                     'Canale: ' + remote.topic + '   ·   ' + ({ connected: 'collegato', connecting: 'mi collego...', offline: 'auto offline' })[remote.state()]];
                 lines.forEach((l, i) => cv.text(fit(cv, l, 19, tw, M), lx, A.y + 110 + i * 32, 19, i === 0 || i === lines.length - 1 ? C.grey : C.text, M));
+                const by = A.y + 110 + lines.length * 32 + 16;
+                cv.roundRect(lx, by, 300, 52, 26, A_('#ffffff', 0.16));
+                cv.text(logLink ? 'Mostra di nuovo il codice' : 'Invia i log al telefono', lx + 150, by + 34, 19, C.text, Object.assign({ align: 'center' }, B));
+                btn(cv, 'sendlogs', lx, by, 300, 52, () => { if (!logLink) sendLogs(); else logLink = null; }, 26);
+                if (logMsg) cv.text(fit(cv, logMsg, 17, tw - 320, M), lx + 316, by + 33, 17, C.grey, M);
                 const qx = right - 360, qy = A.y + 20, qs = 320;
                 cv.roundRect(qx, qy, qs, qs, 24, '#ffffff');
-                const qr = qrOf('scriptable:///run/IPTV%20Telecomando?topic=' + remote.topic), m = (qs - 24) / (qr.size + 6);
+                const qr = qrOf(logLink || ('scriptable:///run/IPTV%20Telecomando?topic=' + remote.topic)), m = (qs - 24) / (qr.size + 6);
                 for (let y = 0; y < qr.size; y++) {
                     for (let x = 0; x < qr.size; x++) if (qr.getModule(x, y)) cv.fillRect(qx + 12 + (x + 3) * m, qy + 12 + (y + 3) * m, m + 0.6, m + 0.6, '#000000');
                 }
-                cv.text('Inquadra con la fotocamera dell\'iPhone', qx + qs / 2, qy + qs + 30, 16, C.grey, Object.assign({ align: 'center' }, M));
+                cv.text(logLink ? 'Codice dei log: inquadralo e inoltrami il file' : 'Inquadra con la fotocamera dell\'iPhone', qx + qs / 2, qy + qs + 30, 16, C.grey, Object.assign({ align: 'center' }, M));
             }
             ui.onClick('BTN_HOME', guard('home', () => go('home')));
             ui.onClick('BTN_LIVE', guard('live', () => go('live')));
@@ -1304,7 +1319,7 @@ mgu.run({
                 else {
                     rail(cv, A);
                     const x0 = A.x + 128;
-                    if (page === 'signin' || (!signedIn() && page !== 'soon')) drawSignin(cv, A, x0);
+                    if (page === 'signin' || (!signedIn() && page !== 'soon' && page !== 'phone')) drawSignin(cv, A, x0);
                     else if (page === 'home') drawHome(cv, A, x0);
                     else if (page === 'live') drawLive(cv, A, x0);
                     else if (page === 'search') drawSearch(cv, A, x0);

@@ -55,3 +55,8 @@ attachments (whoever has the channel or the attachment's link can read them).
 
 A tap on a station (when no refuel is waiting for its station) sends a notification to the phone (`<topic>-avvisi`):
 a tap on it opens Waze navigating there (buttons: Waze, Apple Maps), and CarPlay shows the route.
+
+## Log al telefono (0.9.2)
+
+On "Collega iPhone", *Invia i log dell'app al telefono* sends the app's last 600 log lines as a text file to the
+ntfy app (channel `-avvisi`), to forward when something does not work.

@@ -149,12 +149,34 @@ function createRemote(o) {
         r.end(data);
     }
     const pub = setInterval(() => { publish(); publishFavs(); }, 5000);
+    /** A text file to ntfy.sh as an attachment on <topic>-log -> Promise of its download URL (ntfy keeps it 3 hours). */
+    function uploadLog(text, filename) {
+        return new Promise((resolve, reject) => {
+            if (!o.uplink.lease(o.dataDir)) { reject(new Error('auto offline')); return; }
+            const data = Buffer.from(text, 'utf8');
+            const q = '?filename=' + encodeURIComponent(filename) + '&title=' + encodeURIComponent('Log IPTV') + '&tags=page_facing_up';
+            const r = https.request(opts('PUT', '/' + topic + '-log' + q, { headers: { 'User-Agent': 'amn_iptv remote (iDrive 7)', 'Content-Length': data.length } }), (res) => {
+                let b = '';
+                res.setEncoding('utf8');
+                res.on('data', (c) => { if (b.length < 8192) b += c; });
+                res.on('end', () => {
+                    if (res.statusCode !== 200) { reject(new Error('HTTP ' + res.statusCode)); return; }
+                    try { const j = JSON.parse(b); if (j.attachment && j.attachment.url) resolve(j.attachment.url); else reject(new Error('no link in the answer')); }
+                    catch (e) { reject(new Error('answer not understood')); }
+                });
+            });
+            r.setTimeout(60000, () => r.abort());
+            r.on('error', reject);
+            r.end(data);
+        });
+    }
     setTimeout(listen, 3000);
     return {
         topic,
         state: () => state,
         publish,
         publishFavs,
+        uploadLog,
         stop() { stopped = true; clearInterval(pub); if (timer) clearTimeout(timer); if (req) req.abort(); },
     };
 }
