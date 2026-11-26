@@ -127,7 +127,7 @@ mgu.run({
             const FAV_FILE = path.join(ctx.dataDir, 'favourites.json');
             let favs = [];
             try { favs = JSON.parse(fs.readFileSync(FAV_FILE, 'utf8')).filter((c) => c && c.id); } catch (e) { favs = []; }
-            const isFav = (id) => favs.some((c) => c.id === id);
+            const isFav = (id) => favs.some((c) => String(c.id) === String(id));
             function toggleFav(c) {
                 if (!c) return;
                 if (isFav(c.id)) { favs = favs.filter((x) => x.id !== c.id); say('Removed from favourites'); }
@@ -1234,7 +1234,7 @@ mgu.run({
             /* ---------- the frame ---------- */
             FS.setup(ctx);
             /* ---------- the phone as the remote (lib/remote.js, extras/iptv_telecomando.js) ---------- */
-            const remote = createRemote({ dataDir: ctx.dataDir, log, uplink,
+            const remote = createRemote({ dataDir: ctx.dataDir, log, uplink, favs: () => favs,
                 status: () => {
                     const pb = st && st.playback;
                     if (!pb || !(playingCh || playingFilm)) return { state: 'idle' };
@@ -1258,6 +1258,12 @@ mgu.run({
                     else if (c.op === 'seek') skip(c.by);
                     else if (c.op === 'next') zap(1);
                     else if (c.op === 'prev') zap(-1);
+                    else if (c.op === 'fav') {
+                        // from the phone: added or removed here too (the phone's list follows the car's)
+                        if (c.on && !isFav(c.id)) { favs.push({ id: c.id, name: c.name, icon: c.icon || '', cat: '' }); say('Nei preferiti (dal telefono): ' + short(c.name)); }
+                        else if (!c.on && isFav(c.id)) { favs = favs.filter((x) => String(x.id) !== String(c.id)); say('Tolto dai preferiti (dal telefono)'); }
+                        try { fs.writeFileSync(FAV_FILE, JSON.stringify(favs)); } catch (e) { log.warn('favourites: ' + e.message); }
+                    }
                     else if (c.op === 'next-now' && nextUp) { const f = nextUp.f; nextUp = null; playFilm(f, 0); }
                     else if (c.op === 'next-cancel' && nextUp) { nextUp = null; say('Prossimo episodio annullato dal telefono'); }
                 }) });

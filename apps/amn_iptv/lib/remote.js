@@ -12,6 +12,8 @@
  * Commands: { v: 1, op: 'live', id, name } | { v: 1, op: 'film', id, ext, name, duration } | { v: 1, op: 'episode', id,
  * ext, name, duration, series } | { v: 1, op: 'stop' | 'pause' | 'resume' | 'next' | 'prev' | 'next-now' | 'next-cancel' } |
  * { v: 1, op: 'seek', by: seconds }.
+ *   <topic>-preferiti  car -> phone: the car's favourite channels { v: 1, at, favs: [[id, name, icon], ...] }, on each change
+ *                and every 6 h, so the phone's remote shows the same ones; the phone adds or removes one with { op: 'fav' }
  * A command older than 60 s (a reconnect seeing an old one) is ignored. Whoever knows the topic can change the channel
  * and see the title playing: nothing else (the Xtream login never goes through it).
  *
@@ -50,6 +52,10 @@ function parseCommand(text) {
     if (c.op === 'live') return id(c.id) ? { op: 'live', id: id(c.id), name } : null;
     if (c.op === 'film' || c.op === 'episode') return id(c.id) ? { op: c.op, id: id(c.id), ext, name, duration: Math.max(0, Number(c.duration) || 0), series: id(c.series) } : null;
     if (c.op === 'seek') { const by = Number(c.by); return isFinite(by) && Math.abs(by) <= 3600 ? { op: 'seek', by } : null; }
+    if (c.op === 'fav') {
+        const icon = /^https?:\/\/\S{1,300}$/.test(String(c.icon || '')) ? String(c.icon) : '';
+        return id(c.id) ? { op: 'fav', id: id(c.id), name, icon, on: c.on === true } : null;
+    }
     if (['stop', 'pause', 'resume', 'next', 'prev', 'next-now', 'next-cancel'].indexOf(c.op) >= 0) return { op: c.op };
     return null;
 }
@@ -124,12 +130,31 @@ function createRemote(o) {
         r.on('error', () => {});
         r.end(data);
     }
-    const pub = setInterval(publish, 5000);
+    // the favourite channels, to the phone: when they change, and every 6 h so ntfy keeps them (it keeps 12 h)
+    let lastFavs = '', lastFavsAt = 0;
+    function publishFavs() {
+        if (stopped || !o.favs || !o.uplink.lease(o.dataDir)) return;
+        let list = [];
+        try { list = (o.favs() || []).slice(0, 60).map((c) => [String(c.id), String(c.name || '').slice(0, 60), String(c.icon || '')]); } catch (e) { return; }
+        const key = JSON.stringify(list);
+        if (key === lastFavs && Date.now() - lastFavsAt < 6 * 3600000) return;
+        let body = JSON.stringify({ v: 1, at: Date.now(), favs: list });
+        if (Buffer.byteLength(body) > 3800) body = JSON.stringify({ v: 1, at: Date.now(), favs: list.map((x) => [x[0], x[1], '']) });
+        if (Buffer.byteLength(body) > 3800) return;
+        const data = Buffer.from(body, 'utf8');
+        const r = https.request(opts('POST', '/' + topic + '-preferiti', { headers: { 'User-Agent': 'amn_iptv remote (iDrive 7)', 'Content-Length': data.length } }),
+            (res) => { res.resume(); if (res.statusCode === 200) { lastFavs = key; lastFavsAt = Date.now(); } });
+        r.setTimeout(20000, () => r.abort());
+        r.on('error', () => {});
+        r.end(data);
+    }
+    const pub = setInterval(() => { publish(); publishFavs(); }, 5000);
     setTimeout(listen, 3000);
     return {
         topic,
         state: () => state,
         publish,
+        publishFavs,
         stop() { stopped = true; clearInterval(pub); if (timer) clearTimeout(timer); if (req) req.abort(); },
     };
 }

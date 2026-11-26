@@ -59,3 +59,9 @@ carries what to play. The picture still shows only while parked (or with the pas
 When an episode ends, the next one (same season, else the next season's first, from the service's series info)
 starts after 10 s: a card with a countdown ring, *Guarda ora* and *Annulla*, also on the phone remote's now-playing
 row. Setting *Episodio successivo in automatico* (on by default). Episodes started from the phone carry their series.
+
+## Preferiti uguali tra auto e telefono (0.5.2)
+
+The car's favourite channels go to the phone (`<topic>-preferiti`, on each change and every 6 h); a channel starred
+or unstarred on the phone is added or removed on the car ({ op: 'fav' }), which sends its list back. Films and
+series starred on the phone stay on the phone (the car's favourites are channels).

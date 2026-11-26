@@ -93,9 +93,34 @@ function favs() { try { return JSON.parse(fm.readString(FAV_FILE)); } catch (e) 
 function isFav(t, id) { return favs().some((f) => f.t === t && String(f.id) === String(id)); }
 function toggleFav(item) {
   let l = favs();
-  if (l.some((f) => f.t === item.t && String(f.id) === String(item.id))) l = l.filter((f) => !(f.t === item.t && String(f.id) === String(item.id)));
+  const had = l.some((f) => f.t === item.t && String(f.id) === String(item.id));
+  if (had) l = l.filter((f) => !(f.t === item.t && String(f.id) === String(item.id)));
   else l.unshift(item);
   fm.writeString(FAV_FILE, JSON.stringify(l.slice(0, 60)));
+  // the channels are the car's favourites too: the car adds or removes it and sends its list back
+  if (item.t === "live") send({ op: "fav", id: String(item.id), name: item.name, icon: item.icon || "", on: !had });
+}
+/** The car's favourite channels (its <topic>-preferiti): they replace the phone's channels; films and series stay. */
+async function syncFavs() {
+  try {
+    const r = new Request("https://ntfy.sh/" + kget(K.topic) + "-preferiti/json?poll=1&since=24h");
+    r.timeoutInterval = 10;
+    const text = await r.loadString();
+    let best = null;
+    for (const line of text.split("\n")) {
+      let m; try { m = JSON.parse(line); } catch (e) { continue; }
+      if (m.event !== "message") continue;
+      let x; try { x = JSON.parse(m.message); } catch (e) { continue; }
+      if (x && x.v === 1 && Array.isArray(x.favs) && (!best || x.at > best.at)) best = x;
+    }
+    const seenFile = fm.joinPath(dir, "preferiti_auto.json");
+    let seen = 0; try { seen = JSON.parse(fm.readString(seenFile)).at || 0; } catch (e) { seen = 0; }
+    if (!best || best.at <= seen) return;
+    const others = favs().filter((f) => f.t !== "live");
+    const live = best.favs.map((c) => ({ t: "live", id: c[0], name: c[1], icon: c[2] || "", ext: "" }));
+    fm.writeString(FAV_FILE, JSON.stringify(live.concat(others).slice(0, 80)));
+    fm.writeString(seenFile, JSON.stringify({ at: best.at }));
+  } catch (e) { /* offline: the phone's own list */ }
 }
 
 /* ---------- the screens ---------- */
@@ -259,6 +284,7 @@ async function doSearch() {
 
 /* ---------- start ---------- */
 if (await setup(false)) {
+  await syncFavs();
   stack.push(home);
   await render();
   await table.present(true);
