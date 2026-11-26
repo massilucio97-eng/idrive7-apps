@@ -112,7 +112,8 @@ async function nowPlaying() {
 }
 
 /* ---------- favourites ---------- */
-function favs() { try { return JSON.parse(fm.readString(FAV_FILE)); } catch (e) { return []; } }
+// (Scriptable's readString gives null for a missing file, and JSON.parse(null) is null: always an array)
+function favs() { try { const l = JSON.parse(fm.readString(FAV_FILE)); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
 function isFav(t, id) { return favs().some((f) => f.t === t && String(f.id) === String(id)); }
 function toggleFav(item) {
   let l = favs();
