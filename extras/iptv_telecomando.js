@@ -113,7 +113,7 @@ async function nowPlaying() {
 
 /* ---------- favourites ---------- */
 // (Scriptable's readString gives null for a missing file, and JSON.parse(null) is null: always an array)
-function favs() { try { const l = JSON.parse(fm.readString(FAV_FILE)); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+function favs() { if (!fm.fileExists(FAV_FILE)) return []; try { const l = JSON.parse(fm.readString(FAV_FILE)); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
 function isFav(t, id) { return favs().some((f) => f.t === t && String(f.id) === String(id)); }
 function toggleFav(item) {
   let l = favs();
@@ -138,7 +138,7 @@ async function syncFavs() {
       if (x && x.v === 1 && Array.isArray(x.favs) && (!best || x.at > best.at)) best = x;
     }
     const seenFile = fm.joinPath(dir, "preferiti_auto.json");
-    let seen = 0; try { seen = JSON.parse(fm.readString(seenFile)).at || 0; } catch (e) { seen = 0; }
+    let seen = 0; if (fm.fileExists(seenFile)) { try { seen = JSON.parse(fm.readString(seenFile)).at || 0; } catch (e) { seen = 0; } }
     if (!best || best.at <= seen) return;
     const others = favs().filter((f) => f.t !== "live");
     const live = best.favs.map((c) => ({ t: "live", id: c[0], name: c[1], icon: c[2] || "", ext: "" }));
