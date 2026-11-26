@@ -20,6 +20,10 @@ IPTV (`apps/amn_iptv`, `native/amn-iptv`, `native/tvh-player`):
   tvh-player, **GPL-3.0-or-later** (`native/amn-iptv/LICENSE`, `native/tvh-player/LICENSE`). The service is changed for
   Xtream Codes; the player binary is unchanged, its source in `native/tvh-player`. FFmpeg: LGPL-2.1-or-later
   (`native/amn-iptv/FFMPEG-LICENSE`). Its decoder builds on Robert Nisipeanu's waze-on-cluster via Moonride (GPL-3.0-or-later).
+  **Changed by massilucio97-eng (Nov 2026)**: `tvh-player` (`src/player.cpp`, `src/decoder_msdk.cpp`) for the Stretch
+  picture mode (`MGU_STRETCH`: the picture made the shape it is shown in, not cropped); the service (`service.js`)
+  passes it and adds the phone remote's support. The changed source is in this repository; the binary is built from it
+  by this fork's GitHub Actions.
 - **leschi/mgu-media-client** (MIT): park check, on-screen keyboard, PNG decoder (changed to keep transparency).
 - jpeg-js (BSD-3-Clause), pdf.js decoder core (Apache-2.0), Project Nayuki QR code generator (MIT), Inter (OFL):
   `apps/amn_iptv/LICENSE.third-party`.
@@ -30,3 +34,11 @@ No BMW code or SDK is in this repository. `oap-sdk/` and `dist/` are never commi
 
 The icons of HUD, IPTV and Side View are drawn by `docs/make_icons.py` (our own marks, BMW-menu style with the M
 colours), no third-party artwork.
+
+## This fork (massilucio97-eng)
+
+- **Carburante** (`apps/mas_carburante`, MIT): new. Uses the MGU App Kit (above) and IPTV's full-screen layer
+  (`fuel/fullview.js`, from `apps/amn_iptv/lib/fullview.js`). Data: MIMIT Osservaprezzi carburanti (IODL 2.0),
+  Open-Meteo (CC BY 4.0). Messages to the phone through ntfy.sh.
+- **IPTV** changes: Stretch, phone remote (`lib/remote.js`), next episode, favourites sync, logs to the phone.
+- **extras/**: `carburante_widget.js`, `iptv_telecomando.js` (Scriptable scripts, MIT).
