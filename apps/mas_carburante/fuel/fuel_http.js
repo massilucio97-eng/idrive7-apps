@@ -3,7 +3,8 @@
  * fuel_http.js - one file from the MIMIT open data, read line by line as it arrives, through the Store's
  * internet uplink (mgu-uplink; kit/runtime/uplink.js resolves the host through the lease's DNS servers, as
  * arefahmad's and M850i-amn's apps do). Only www.mimit.gov.it is asked for the prices (a redirect is followed only
- * on it), and ntfy.sh for the phone's position (phone.js: lines(path, fn, 'ntfy.sh')).
+ * on it), ntfy.sh for the phone's position (phone.js: lines(path, fn, 'ntfy.sh')) and api.open-meteo.com for the
+ * welcome's weather (meteo.js).
  *
  *   const http = require('./fuel_http').client(dataDir);
  *   await http.lines('/images/exportCSV/prezzo_alle_8.csv', (line) => ...);   // -> bytes read
@@ -13,7 +14,7 @@
 const https = require('https');
 const uplink = require('./kit/uplink');
 
-const HOST = 'www.mimit.gov.it', HOSTS = ['www.mimit.gov.it', 'ntfy.sh'];
+const HOST = 'www.mimit.gov.it', HOSTS = ['www.mimit.gov.it', 'ntfy.sh', 'api.open-meteo.com'];
 const MAX_BYTES = 80 * 1024 * 1024;     // the price file is ~10 MB, the stations ~4 MB
 const TIMEOUT_MS = 30000;
 

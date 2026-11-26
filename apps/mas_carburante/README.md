@@ -28,3 +28,12 @@ usually follow within 1-3 days, so *fill up today*; when as many lowered it, *wa
 otherwise the week's median drift, or *stable*. The first advice comes the day after the first download. With the
 range under twice the range notice and prices rising: one notification a day (setting *Avvisami se i prezzi salgono*).
 It is an estimate from the stations' own moves, not a forecast.
+
+## Benvenuto (0.7.0)
+
+When you get in (the head unit starting, the car woken up, the driver's door opened; at most once every 15 minutes,
+never while driving) four large cards cover the centre screen for 8 s: the weather (Open-Meteo, CC BY 4.0), the
+range with the real km/l, the prices around (rising, falling, or the cheapest), the last trip. A tap or the
+controller closes it. With prices rising or the range under the notice's threshold, Ambient config (if installed, its
+"Redline shift flash" setting on) flashes the lights orange twice. Settings: *Benvenuto sullo schermo*, *Luci
+ambiente arancioni*. The screen is a layer of its own over the whole output (fuel/fullview.js, from IPTV).

@@ -24,6 +24,11 @@
  * usually follow within 1-3 days), so whether to fill up today or wait. With the range under twice the range notice,
  * a notification once a day when the prices are rising.
  *
+ * Welcome (welcome.js, meteo.js): when you get in (the app's start with the head unit, the car woken, the driver's
+ * door opened; at most once every 15 min, never while driving) four large cards over the whole centre screen for 8 s:
+ * the weather (Open-Meteo), the range with the real km/l, the prices around, the last trip. With prices rising or the
+ * range low, Ambient config flashes the lights orange twice.
+ *
  * Read only: nothing is written to the car. Node 8: no ?., ?? or object spread.
  */
 const fs = require('fs');
@@ -35,6 +40,10 @@ const LOG = require('./fuellog');
 const PHONE = require('./phone');
 const NOTIFY = require('./notify');
 const TR = require('./trend');
+const METEO = require('./meteo');
+const { createWelcome } = require('./welcome');
+const { RenderClient } = require('./kit/renderd');
+const record = require('./kit/record');
 
 const FILES = { stations: '/images/exportCSV/anagrafica_impianti_attivi.csv', prices: '/images/exportCSV/prezzo_alle_8.csv' };
 const ROWS = 10;
@@ -53,6 +62,10 @@ const num1 = (x) => x.toFixed(1).replace('.', ',');
 const kmInt = (k) => String(Math.round(k)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const dateText = (ms) => { const d = new Date(ms); return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2); };
 const KOMBI = 'de.bmw.infotainment.KombiIF';
+const CONDITIONS = { PARKEN_BN_NIO: 1, PARKEN_BN_IO: 2, STANDFUNKTIONEN_KUNDE_NICHT_IM_FZG: 3, WOHNEN: 5,
+    PRUEFEN_ANALYSE_DIAGNOSE: 7, FAHRBEREITSCHAFT_HERSTELLEN: 8, FAHREN: 10, FAHRBEREITSCHAFT_BEENDEN: 12 };
+const conditionOf = (x) => { const n = typeof x === 'number' ? x : CONDITIONS[x]; return n >= 1 && n <= 12 ? n : undefined; };
+const WELCOME_COOLDOWN_MS = 15 * 60 * 1000;
 /** "13,0 km · 0,85 l · 1,48 €" (what is known of it) */
 const tripText = (t) => num1(t.km) + ' km' + (t.litres !== null ? ' · ' + t.litres.toFixed(2).replace('.', ',') + ' l' : '') +
     (t.eur !== null ? ' · ' + t.eur.toFixed(2).replace('.', ',') + ' €' : t.litres === null ? ' · consumo non ancora noto' : ' · prezzo: indica un distributore al prossimo pieno');
@@ -109,6 +122,74 @@ mgu.run({
         // to the phone: notifications (ntfy app) and the summary for the Home screen widget
         const notifier = NOTIFY.start(http, phone.topic, log, () => settings.get('notify') !== false);
         let lastRange = null, kmChangedAt = Date.now(), kmSeen = null;
+
+        /* ---------- the welcome ---------- */
+        const meteo = METEO.start(http, ctx.dataDir, log);
+        const meteoRefresh = () => {
+            const p = pos();
+            if (p) meteo.refresh(p, '');
+            else if (zone && zone.centre) meteo.refresh(zone.centre, zone.gps ? '' : title(zone.comune));
+        };
+        setTimeout(meteoRefresh, 8000);
+        setInterval(meteoRefresh, 10 * 60 * 1000);
+        const welcome = createWelcome({ log, RenderClient, Recorder: record.Recorder });
+        const welcomeFile = path.join(ctx.dataDir || '.', 'benvenuto.json');
+        let lastWelcome = 0, condition = null, speed = null, driverDoor = null;
+        try { lastWelcome = Number(JSON.parse(fs.readFileSync(welcomeFile, 'utf8')).at) || 0; } catch (e) { lastWelcome = 0; }
+        function welcomeCards() {
+            const c = choice(), sm = LOG.summary(diary, Date.now()), lc = diary.lastClosed;
+            const range = lastRange !== null ? lastRange : typeof diary.lastRange === 'number' ? diary.lastRange : null;
+            const thr = Number(settings.get('rangeAlert')) || 0, low = range !== null && thr > 0 && range < thr;
+            const w = meteo.card() || { icon: 'cloud', lab: 'Meteo', val: '—', sub: http.online() ? 'in arrivo' : 'serve internet' };
+            const kml = sm.l100 ? 100 / sm.l100 : null;
+            const r = { icon: 'pump', lab: 'Autonomia', val: range !== null ? range + ' km' : '—', sub: kml ? num1(kml) + ' km/l reali' : 'consumo dopo 2 pieni',
+                accent: low ? '#F0997B' : undefined };
+            const b = shown[0], lab = FUEL_NAME[c.fuel] + ' in zona';
+            let f;
+            if (trend && trend.kind === 'up') f = { icon: 'up', lab: lab, val: 'In salita', sub: 'fai il pieno oggi', accent: '#F0997B' };
+            else if (trend && trend.kind === 'down') f = { icon: 'down', lab: lab, val: 'In calo', sub: 'puoi aspettare', accent: '#5DCAA5' };
+            else if (b) f = { icon: trend ? 'flat' : 'pump', lab: lab, val: euro(b.price), sub: (trend ? 'stabili · ' : '') + (b.brand || 'Pompa bianca') + ' ' + kmText(b.km) };
+            else f = { icon: 'pump', lab: lab, val: '—', sub: 'prezzi in arrivo' };
+            let t;
+            if (lc) {
+                const mins = lc.start && lc.end ? Math.max(1, Math.round((lc.end - lc.start) / 60000)) : null;
+                t = lc.eur !== null && lc.eur !== undefined
+                    ? { icon: 'route', lab: 'Ultimo viaggio', val: lc.eur.toFixed(2).replace('.', ',') + ' €', sub: num1(lc.km) + ' km' + (mins ? ' · ' + mins + ' min' : '') }
+                    : { icon: 'route', lab: 'Ultimo viaggio', val: num1(lc.km) + ' km', sub: (mins ? mins + ' min · ' : '') + 'costo al prossimo pieno' };
+            } else t = { icon: 'route', lab: 'Ultimo viaggio', val: '—', sub: 'nessun viaggio ancora' };
+            return { cards: [w, r, f, t], alert: !!(trend && trend.kind === 'up') || low };
+        }
+        function maybeWelcome(why) {
+            if (settings.get('welcome') === false || welcome.busy()) return;
+            if (condition === 10 || (speed !== null && speed > 3)) return;          // driving: never
+            if (Date.now() - lastWelcome < WELCOME_COOLDOWN_MS) return;
+            lastWelcome = Date.now();
+            try { fs.writeFileSync(welcomeFile, JSON.stringify({ at: lastWelcome })); } catch (e) { /* kept for this run */ }
+            const w = welcomeCards();
+            log.info('welcome (' + why + '): ' + JSON.stringify(w.cards.map((x) => x.val)) + (w.alert ? ', flash' : ''));
+            welcome.show(w.cards, { alert: w.alert && settings.get('welcomeFlash') !== false });
+        }
+        // the car's state, the driver's door, the speed: when to welcome, and never while driving
+        ctx.signals.watch('de.bmw.infrastructure.VehicleCondition', '1', {
+            VehicleCondition: (v) => {
+                const n = conditionOf(v && v.statusConditionVehicle);
+                if (n === undefined) return;
+                const was = condition; condition = n;
+                if (was !== null && was <= 3 && n >= 5 && n !== 10) maybeWelcome('the car woke up');
+            },
+        }, log).catch((e) => log.warn('vehicle state: ' + (e && e.message || e)));
+        ctx.signals.watch('de.bmw.body.DoorsWindowsRoofMirrors', '1', {
+            CentralLockingSystemAndPanelStatus: (v) => {
+                const x = v && v.statusDoorSwitchDRD, open = x === 1 || /_OFFEN$/.test(String(x));
+                if (driverDoor === false && open) maybeWelcome('driver door opened');
+                if (x !== undefined && x !== null) driverDoor = open;
+            },
+        }, log).catch((e) => log.warn('doors: ' + (e && e.message || e)));
+        ctx.signals.watch('de.bmw.infotainment.vehicle.Vehicle2', '1', {
+            statusCarSpeed2: (v) => { const k = v && v.speedVehicleCentreOfGravity; if (typeof k === 'number' && k !== 65535) speed = k * 0.015625; },
+        }, log).catch((e) => log.warn('speed: ' + (e && e.message || e)));
+        // the app starts with the head unit, which wakes when the car is opened: the welcome once the rest has come in
+        setTimeout(() => maybeWelcome('start'), 6000);
 
         /* ---------- the screen ---------- */
         function render(status) {
@@ -284,7 +365,7 @@ mgu.run({
                     // the range: one notice when it falls under the setting, again only after it went back up
                     const range = typeof v.range === 'number' && v.range > 0 && v.range < 4095 ? v.range : null;
                     if (range !== null) {
-                        lastRange = range;
+                        lastRange = range; diary.lastRange = range;
                         const thr = Number(settings.get('rangeAlert')) || 0;
                         if (thr && range < thr && !diary.rangeAlerted) {
                             diary.rangeAlerted = true;

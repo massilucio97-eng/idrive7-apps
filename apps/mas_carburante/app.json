@@ -2,7 +2,7 @@
   "id": "mas_carburante",
   "title": "Carburante",
   "description": "I distributori più economici vicino a te, dai prezzi ufficiali del MIMIT (open data, aggiornati ogni giorno alle 8), e il diario dei rifornimenti con il consumo reale: i rifornimenti li trova da sola dal livello del serbatoio e dal contachilometri, tu tocchi il distributore dove hai fatto benzina. Solo lettura: non scrive nulla sull'auto. Internet dallo Store (mgu-uplink).",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "vendor": "mas",
   "loggingId": "MSF1",
   "mguHmi": [
@@ -15,6 +15,18 @@
     "de.bmw.infotainment.KombiIF": {
       "_optional": "the tank level (litres) and the odometer (km), for the refuelling diary",
       "statusRangeTankStatus": "rs"
+    },
+    "de.bmw.infrastructure.VehicleCondition": {
+      "_optional": "the car woken up (getting in): the welcome",
+      "VehicleCondition": "s"
+    },
+    "de.bmw.body.DoorsWindowsRoofMirrors": {
+      "_optional": "the driver's door opened: the welcome",
+      "CentralLockingSystemAndPanelStatus": "s"
+    },
+    "de.bmw.infotainment.vehicle.Vehicle2": {
+      "_optional": "the speed: no welcome while driving",
+      "statusCarSpeed2": "rs"
     }
   },
   "screens": [
@@ -255,6 +267,18 @@
     {
       "key": "trendAlert",
       "label": "Avvisami se i prezzi salgono e l'autonomia è bassa",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "welcome",
+      "label": "Benvenuto sullo schermo quando sali (meteo, autonomia, prezzi, ultimo viaggio)",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "welcomeFlash",
+      "label": "Luci ambiente arancioni se c'è un avviso (serve Ambient config)",
       "type": "bool",
       "default": true
     },
