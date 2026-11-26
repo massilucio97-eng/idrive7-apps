@@ -40,6 +40,14 @@ function parsePos(text) {
     return { lat: lat, lon: lon };
 }
 
+/** "nome Massimo" (the welcome's name, sent from the ntfy web page or app) -> 'Massimo'; "nome -" or "nome" -> ''; else null. */
+function parseName(text) {
+    const m = /^\s*nome\b[\s:=]*(.*)$/i.exec(String(text || ''));
+    if (!m) return null;
+    const n = m[1].replace(/[^A-Za-zÀ-ÖØ-öø-ÿ' .-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
+    return n === '-' ? '' : n;
+}
+
 /** The car's topic, made once: { topic } */
 function topicFile(dataDir) {
     const file = path.join(dataDir || '.', 'ponte.json');
@@ -53,24 +61,28 @@ function topicFile(dataDir) {
 }
 
 /**
- * start(http, dataDir, log, enabled()) -> { position() ({ lat, lon, at } fresh, or null), topic, status() }.
+ * start(http, dataDir, log, enabled(), onName) -> { position() ({ lat, lon, at } fresh, or null), topic, status() }.
+ * onName(name, timeMs): the newest "nome ..." message on the topic (main.js keeps it if newer than the one it has).
  * http: fuel_http's client (lines(path, fn, host)).
  */
-function start(http, dataDir, log, enabled) {
+function start(http, dataDir, log, enabled, onName) {
     const t = topicFile(dataDir);
     let pos = null, busy = false, error = null, lastLogged = 0;
     function poll() {
         if (busy || !enabled() || !http.online()) return;
         busy = true;
-        let best = null;
+        let best = null, name = null;
         http.lines('/' + t.topic + '/json?poll=1&since=2h', (line) => {
             let m;
             try { m = JSON.parse(line); } catch (e) { return; }
             if (!m || m.event !== 'message') return;
+            const nm = parseName(m.message);
+            if (nm !== null && (!name || m.time >= name.time)) name = { name: nm, time: m.time };
             const p = parsePos(m.message);
             if (p && (!best || m.time >= best.time)) best = { lat: p.lat, lon: p.lon, time: m.time };
         }, HOST).then(() => {
             error = null;
+            if (name && onName) { try { onName(name.name, name.time * 1000); } catch (e) { log.warn('phone: name: ' + e.message); } }
             if (best) {
                 const at = best.time * 1000;
                 if (!pos || at !== pos.at) { pos = { lat: best.lat, lon: best.lon, at: at }; if (at !== lastLogged) { lastLogged = at; log.info('phone: position from ' + new Date(at).toISOString()); } }
@@ -93,4 +105,4 @@ function start(http, dataDir, log, enabled) {
     };
 }
 
-module.exports = { start, parsePos, topicFile, FRESH_MS };
+module.exports = { start, parsePos, parseName, topicFile, FRESH_MS };

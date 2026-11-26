@@ -10,7 +10,7 @@
  * logical px (scale 2).
  *
  *   const w = createWelcome({ ctx, log, RenderClient, Recorder });
- *   w.show(cards, { alert })    cards: [{ icon: 'sun'|'cloud'|'rain'|'snow'|'pump'|'up'|'down'|'flat'|'route', lab, val, sub, accent }]
+ *   w.show(cards, { alert, name })   name: after the greeting ("Buonasera, Massimo"), set from the phone (phone.js)    cards: [{ icon: 'sun'|'cloud'|'rain'|'snow'|'pump'|'up'|'down'|'flat'|'route', lab, val, sub, accent }]
  *   w.busy()                    true while it waits for the renderer or shows
  *
  * Node 8: no ?., ?? or object spread.
@@ -74,13 +74,13 @@ function fitText(rec, s, x, y, size, c, w, font) {
     rec.text(s, x, y, sz, c, { literal: true, font: font });
 }
 
-function paint(rec, H, t, cards, now) {
+function paint(rec, H, t, cards, now, name) {
     const tOut = SHOW_MS, k = t < FADE_MS ? ease(t / FADE_MS) : t > tOut ? 1 - ease((t - tOut) / FADE_MS) : 1;
     rec.clear([0, 0, 0, 0]);
     rec.alpha(k);
     rec.fillRect(0, 0, W, H, BG);
     // the bar
-    rec.text(greeting(now), 36, 62, 30, TEXT, { literal: true, font: 'bold' });
+    rec.text(greeting(now) + (name ? ', ' + name : ''), 36, 62, 30, TEXT, { literal: true, font: 'bold' });
     rec.text(dateLine(now), W - 36, 62, 22, MUTED, { literal: true, align: 'right' });
     // the cards: in one after the other, sliding up
     const gap = 14, cw = (W - 72 - gap * 3) / 4, ch = Math.min(206, H - 130), top = 110;
@@ -106,7 +106,7 @@ function flash(log) {
 
 function createWelcome(o) {
     const log = o.log;
-    let state = 'idle', t0 = 0, waitFrom = 0, timer = null, cards = [], alert = false, flashes = [];
+    let state = 'idle', t0 = 0, waitFrom = 0, timer = null, cards = [], alert = false, flashes = [], name = '';
     const stop = (why) => {
         if (timer) clearInterval(timer);
         timer = null; state = 'idle';
@@ -133,13 +133,13 @@ function createWelcome(o) {
         const t = Date.now() - t0;
         if (t > SHOW_MS + FADE_MS) { stop('done'); return; }
         fv.update(true);
-        fv.draw((rec, H) => paint(rec, H, t, cards, new Date()));
+        fv.draw((rec, H) => paint(rec, H, t, cards, new Date(), name));
     }
     return {
         busy: () => state !== 'idle',
         show(c, opts) {
             if (state !== 'idle') return;
-            cards = c || []; alert = !!(opts && opts.alert);
+            cards = c || []; alert = !!(opts && opts.alert); name = (opts && opts.name) || '';
             state = 'wait'; waitFrom = Date.now();
             timer = setInterval(frame, FRAME_MS);
             frame();

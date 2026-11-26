@@ -103,7 +103,17 @@ mgu.run({
             max: ROWS,
         });
         // the iPhone's position (phone.js), when fresh; else the zone in the settings, as before
-        const phone = PHONE.start(http, ctx.dataDir, log, () => settings.get('gps') !== false);
+        // the welcome's name: "nome Massimo" sent to the car's channel (phone.js), kept in <data>/nome.json
+        const nameFile = path.join(ctx.dataDir || '.', 'nome.json');
+        let who = { name: '', at: 0 };
+        try { const j = JSON.parse(fs.readFileSync(nameFile, 'utf8')); if (j && typeof j.name === 'string') who = j; } catch (e) { /* none yet */ }
+        const onName = (n, at) => {
+            if (at <= who.at) return;
+            who = { name: n, at: at };
+            try { fs.writeFileSync(nameFile, JSON.stringify(who)); } catch (e) { /* kept for this run */ }
+            log.info('welcome name ' + (n ? 'set' : 'removed'));
+        };
+        const phone = PHONE.start(http, ctx.dataDir, log, () => true, onName);
         const pos = () => (settings.get('gps') !== false ? phone.position() : null);
         const near = (z, p) => z && z.gps && z.centre && M.km(z.centre.lat, z.centre.lon, p.lat, p.lon) < MOVE_KM;
         const fresh = () => {
@@ -167,7 +177,7 @@ mgu.run({
             try { fs.writeFileSync(welcomeFile, JSON.stringify({ at: lastWelcome })); } catch (e) { /* kept for this run */ }
             const w = welcomeCards();
             log.info('welcome (' + why + '): ' + JSON.stringify(w.cards.map((x) => x.val)) + (w.alert ? ', flash' : ''));
-            welcome.show(w.cards, { alert: w.alert && settings.get('welcomeFlash') !== false });
+            welcome.show(w.cards, { alert: w.alert && settings.get('welcomeFlash') !== false, name: who.name });
         }
         // the car's state, the driver's door, the speed: when to welcome, and never while driving
         ctx.signals.watch('de.bmw.infrastructure.VehicleCondition', '1', {
@@ -386,12 +396,13 @@ mgu.run({
         ui.onClick('BTN_REFRESH', () => refresh('button'));
         ui.onClick('BTN_PHONE', () => {
             ui.text('PHONE_1', 'Canale della tua auto: ' + phone.topic);
-            ui.text('PHONE_2', 'Stato: ' + phone.status() + ' · ' + notifier.status());
+            ui.text('PHONE_2', 'Stato: ' + phone.status() + ' · ' + notifier.status() + ' · Nome nel benvenuto: ' + (who.name || 'nessuno'));
             ui.text('PHONE_TEXT', 'Sull\'iPhone, app Comandi > Automazione > Nuova > CarPlay > Si connette > Esegui subito.\n' +
                 'Azioni: 1) Ottieni posizione attuale. 2) Testo: [Latitudine] ; [Longitudine] (dai dettagli della posizione, arrotondati a 3 decimali). ' +
                 '3) Ottieni contenuto dell\'URL: https://ntfy.sh/' + phone.topic + ' , metodo POST, corpo: File/Testo con il testo del punto 2.\n' +
                 'Notifiche: installa l\'app ntfy e iscriviti al canale ' + phone.topic + '-avvisi (server ntfy.sh).\n' +
                 'Widget: app Scriptable, script carburante_widget.js con il canale ' + phone.topic + '.\n' +
+                'Nome nel benvenuto: apri https://ntfy.sh/' + phone.topic + ' nel browser del telefono e invia "nome Massimo" (o il nome che vuoi; "nome -" per toglierlo): arriva in auto entro 30 secondi.\n' +
                 'La posizione resta valida 60 minuti; senza, l\'app usa la zona delle impostazioni. Il canale è segreto: non condividerlo (chi lo conosce può leggere la posizione inviata, ntfy.sh la tiene circa 12 ore).');
             ui.open('PHONE');
         });
