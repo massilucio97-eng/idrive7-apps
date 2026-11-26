@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const POLL_MS = 30000, FRESH_MS = 60 * 60 * 1000, HOST = 'ntfy.sh';
+const POLL_MS = 30000, FRESH_MS = 60 * 60 * 1000, HOST = 'ntfy.sh', SINCE = '12h';
 const B32 = 'abcdefghijklmnopqrstuvwxyz234567';
 
 /** "45.071;7.515", "45,071;7,515", "45.071, 7.515", "45.071 7.515", {"lat":..,"lon":..} -> { lat, lon } or null */
@@ -38,6 +38,23 @@ function parsePos(text) {
     if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
     if (!(lat > 35 && lat < 48 && lon > 6 && lon < 19.5)) return null;     // MIMIT's stations are in Italy
     return { lat: lat, lon: lon };
+}
+
+/**
+ * One message: "lat;lon", "lat;lon;via;comune" (departure: the Shortcut "CarPlay si connette"), "fine;lat;lon;via;comune"
+ * (arrival: "CarPlay si disconnette") -> { pos: { lat, lon } | null, end: bool, via, comune } or null.
+ */
+function parseMsg(text) {
+    const t = String(text || '').replace(/[\[\]()"']/g, '').trim();
+    if (t.indexOf(';') < 0) { const p = parsePos(t); return p ? { pos: p, end: false, via: '', comune: '' } : null; }
+    const parts = t.split(';').map((x) => x.trim());
+    let end = false;
+    if (/^fine$/i.test(parts[0])) { end = true; parts.shift(); }
+    if (parts.length < 2) return null;
+    const p = parsePos(parts[0] + ';' + parts[1]);
+    if (!p) return null;
+    const clip = (x) => String(x || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    return { pos: p, end: end, via: clip(parts[2]), comune: clip(parts[3]) };
 }
 
 /** "nome Massimo" (the welcome's name, sent from the ntfy web page or app) -> 'Massimo'; "nome -" or "nome" -> ''; else null. */
@@ -67,21 +84,26 @@ function topicFile(dataDir) {
  */
 function start(http, dataDir, log, enabled, onName) {
     const t = topicFile(dataDir);
-    let pos = null, busy = false, error = null, lastLogged = 0;
+    let pos = null, busy = false, error = null, lastLogged = 0, places = [];
     function poll() {
         if (busy || !enabled() || !http.online()) return;
         busy = true;
         let best = null, name = null;
-        http.lines('/' + t.topic + '/json?poll=1&since=2h', (line) => {
+        const got = [];
+        http.lines('/' + t.topic + '/json?poll=1&since=' + SINCE, (line) => {
             let m;
             try { m = JSON.parse(line); } catch (e) { return; }
             if (!m || m.event !== 'message') return;
             const nm = parseName(m.message);
             if (nm !== null && (!name || m.time >= name.time)) name = { name: nm, time: m.time };
-            const p = parsePos(m.message);
+            const g = parseMsg(m.message);
+            if (!g) return;
+            const p = g.pos;
+            if (g.via || g.comune || g.end) got.push({ time: m.time * 1000, end: g.end, via: g.via, comune: g.comune });
             if (p && (!best || m.time >= best.time)) best = { lat: p.lat, lon: p.lon, time: m.time };
         }, HOST).then(() => {
             error = null;
+            places = got;
             if (name && onName) { try { onName(name.name, name.time * 1000); } catch (e) { log.warn('phone: name: ' + e.message); } }
             if (best) {
                 const at = best.time * 1000;
@@ -94,6 +116,8 @@ function start(http, dataDir, log, enabled, onName) {
     return {
         topic: t.topic,
         position: () => (pos && Date.now() - pos.at < FRESH_MS ? pos : null),
+        /** The departures and arrivals with their street, from the last 12 hours: [{ time ms, end, via, comune }] */
+        places: () => places,
         poll: poll,
         status: () => {
             if (!enabled()) return 'posizione dall\'iPhone spenta';
@@ -105,4 +129,4 @@ function start(http, dataDir, log, enabled, onName) {
     };
 }
 
-module.exports = { start, parsePos, parseName, topicFile, FRESH_MS };
+module.exports = { start, parsePos, parseMsg, parseName, topicFile, FRESH_MS };

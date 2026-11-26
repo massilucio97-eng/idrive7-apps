@@ -37,3 +37,15 @@ range with the real km/l, the prices around (rising, falling, or the cheapest), 
 controller closes it. With prices rising or the range under the notice's threshold, Ambient config (if installed, its
 "Redline shift flash" setting on) flashes the lights orange twice. Settings: *Benvenuto sullo schermo*, *Luci
 ambiente arancioni*. The screen is a layer of its own over the whole output (fuel/fullview.js, from IPTV).
+
+## Riepilogo spese del mese (0.8.0)
+
+The trips grouped by street of departure and street of arrival, the refuels and the totals (fuel, km, cost per km,
+real km/l), as a page (Condividi → Stampa → PDF on the phone) and a CSV (";", Italian decimals), sent as ntfy
+attachments on `<topic>-avvisi`: at the first start of a month for the month before (setting *Riepilogo spese*), or
+with *Invia il riepilogo di questo mese* on the diary page. ntfy.sh keeps an attachment 3 hours.
+
+The streets come from the phone: the Shortcut "CarPlay si connette" sends `lat;lon;via;città` (departure), a second
+one "CarPlay si disconnette" sends `fine;lat;lon;via;città` (arrival). The car reads the channel's last 12 hours; a
+trip without its arrival takes the next trip's departure. Streets are kept only in the car's diary and in the
+attachments (whoever has the channel or the attachment's link can read them).

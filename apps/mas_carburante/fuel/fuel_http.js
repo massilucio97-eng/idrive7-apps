@@ -81,8 +81,27 @@ function client(dataDir) {
             req.end(data);
         });
     }
+    /** PUT a file to ntfy.sh as an attachment (query: title, message, filename, tags, priority): resolves with the status. */
+    function put(pathname, body, query) {
+        return new Promise((resolve, reject) => {
+            const data = Buffer.from(body, 'utf8');
+            if (data.length > 2 * 1024 * 1024) { reject(new Error('file too large')); return; }
+            const q = Object.keys(query || {}).map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(query[k])).join('&');
+            const opts = { method: 'PUT', host: 'ntfy.sh', port: 443, path: pathname + (q ? '?' + q : ''), timeout: 60000,
+                headers: { 'User-Agent': 'mas_carburante (iDrive 7)', 'Content-Length': data.length } };
+            const lookup = lookupFor(uplink.lease(dataDir));
+            if (lookup) opts.lookup = lookup;
+            const ca = uplink.trustedCa(dataDir);
+            if (ca) opts.ca = ca;
+            const req = https.request(opts, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); res.on('error', reject); });
+            req.on('timeout', () => { req.abort(); reject(new Error('no answer from ntfy.sh')); });
+            req.on('error', reject);
+            req.end(data);
+        });
+    }
     return {
         post: post,
+        put: put,
         online() { return !!uplink.lease(dataDir); },
         lines(pathname, onLine, host) { return get(pathname, onLine, 0, host); },
     };

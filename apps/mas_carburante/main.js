@@ -29,6 +29,10 @@
  * the weather (Open-Meteo), the range with the real km/l, the prices around, the last trip. With prices rising or the
  * range low, Ambient config flashes the lights orange twice.
  *
+ * Monthly report (report.js): the trips grouped by street of departure and of arrival (sent by the phone's Shortcuts),
+ * the refuels and the totals, as a page (printable to PDF) and a CSV, sent to the phone as ntfy attachments on
+ * <topic>-avvisi at the first start of a month for the month before, or with "Invia il riepilogo" on the diary.
+ *
  * Read only: nothing is written to the car. Node 8: no ?., ?? or object spread.
  */
 const fs = require('fs');
@@ -41,6 +45,7 @@ const PHONE = require('./phone');
 const NOTIFY = require('./notify');
 const TR = require('./trend');
 const METEO = require('./meteo');
+const REPORT = require('./report');
 const { createWelcome } = require('./welcome');
 const { RenderClient } = require('./kit/renderd');
 const record = require('./kit/record');
@@ -334,6 +339,7 @@ mgu.run({
                 ui.visible(name, true);
             }
             ui.visible('BTN_UNDO', rs.length > 0);
+            ui.text('REPORT_INFO', reportMsg || 'Riepilogo spese: percorsi per via di partenza e di arrivo, rifornimenti e totali, in pagina (PDF) e CSV sul telefono');
         }
         for (let i = 1; i <= ROWS; i++) {
             const n = i;
@@ -348,6 +354,47 @@ mgu.run({
         }
         ui.onClick('BTN_SKIP', () => { if (LOG.skip(diary)) { saveDiary(); render(); } });
         ui.onClick('BTN_DIARY', () => { renderDiary(); ui.open('DIARY'); });
+        /* ---------- the monthly report ---------- */
+        let reportBusy = false, reportMsg = '';
+        // the streets from the phone onto the trips
+        setInterval(() => {
+            const pl = phone.places();
+            if (pl.length && (diary.trips || []).length && REPORT.placeTrips(diary, pl)) { saveDiary(); log.info('trips: streets added'); }
+        }, 30000);
+        function sendReport(year, month, why) {
+            if (reportBusy) return Promise.resolve(false);
+            if (!http.online()) { reportMsg = 'Riepilogo non inviato: auto offline'; renderDiary(); return Promise.resolve(false); }
+            reportBusy = true; reportMsg = 'Invio il riepilogo al telefono...'; renderDiary();
+            const r = REPORT.build(diary, year, month), sm = r.summary, ch = '/' + phone.topic + '-avvisi';
+            const msg = sm.trips + ' viaggi · ' + sm.km + ' km · carburante ' + sm.eur.toFixed(2).replace('.', ',') + ' €' +
+                (sm.eurKm ? ' · ' + sm.eurKm.toFixed(3).replace('.', ',') + ' €/km' : '') + '. Apri l\'allegato (resta scaricabile 3 ore).';
+            return http.put(ch, r.html, { title: r.title, message: msg, filename: 'spese-auto-' + r.key + '.html', tags: 'page_facing_up' })
+                .then((st) => {
+                    if (st !== 200) throw new Error('HTTP ' + st);
+                    return http.put(ch, r.csv, { title: r.title + ' (CSV)', message: 'Per Excel o Numbers: percorsi, viaggi e rifornimenti.', filename: 'spese-auto-' + r.key + '.csv', tags: 'bar_chart' });
+                })
+                .then((st) => {
+                    if (st !== 200) throw new Error('HTTP ' + st);
+                    log.info('report ' + r.key + ' sent (' + why + '): ' + JSON.stringify(sm));
+                    reportMsg = 'Riepilogo di ' + r.title.replace('Spese auto · ', '') + ' inviato al telefono (app ntfy, canale -avvisi)';
+                    return true;
+                }, (e) => { log.warn('report: ' + (e.message || e)); reportMsg = 'Riepilogo non inviato: ' + (e.message || e); return false; })
+                .then((ok) => { reportBusy = false; renderDiary(); return ok; });
+        }
+        // at the first start of a month (up to the 10th): the month before, once
+        setInterval(() => {
+            if (settings.get('report') === false) return;
+            const d = new Date();
+            if (d.getDate() > 10) return;
+            const y = d.getMonth() ? d.getFullYear() : d.getFullYear() - 1, m = d.getMonth() ? d.getMonth() - 1 : 11;
+            const key = y + '-' + ('0' + (m + 1)).slice(-2);
+            if (diary.reportSent === key || reportBusy) return;
+            const any = (diary.trips || []).some((t) => { const s = new Date(t.start); return s.getFullYear() === y && s.getMonth() === m; });
+            if (!any) return;
+            sendReport(y, m, 'new month').then((ok) => { if (ok) { diary.reportSent = key; saveDiary(); } });
+        }, 5 * 60 * 1000);
+        ui.onClick('BTN_REPORT', () => { const d = new Date(); sendReport(d.getFullYear(), d.getMonth(), 'button'); });
+
         ui.onClick('BTN_UNDO', () => { const r = LOG.undo(diary); if (r) { saveDiary(); log.info('refuel removed: ' + r.km + ' km'); } renderDiary(); render(); });
         // the car: tank level and odometer, every 10 s (as Live Data polls KombiIF)
         if (ctx.signals && ctx.signals.watch) {
@@ -402,6 +449,8 @@ mgu.run({
                 '3) Ottieni contenuto dell\'URL: https://ntfy.sh/' + phone.topic + ' , metodo POST, corpo: File/Testo con il testo del punto 2.\n' +
                 'Notifiche: installa l\'app ntfy e iscriviti al canale ' + phone.topic + '-avvisi (server ntfy.sh).\n' +
                 'Widget: app Scriptable, script carburante_widget.js con il canale ' + phone.topic + '.\n' +
+                'Vie dei viaggi (per il riepilogo mensile): nel Comando Rapido "CarPlay si connette" usa il testo Latitudine;Longitudine;Via;Città ' +
+                '(Via e Città da "Ottieni dettagli della posizione"); aggiungi l\'automazione "CarPlay si disconnette" con le stesse azioni e il testo fine;Latitudine;Longitudine;Via;Città.\n' +
                 'Nome nel benvenuto: apri https://ntfy.sh/' + phone.topic + ' nel browser del telefono e invia "nome Massimo" (o il nome che vuoi; "nome -" per toglierlo): arriva in auto entro 30 secondi.\n' +
                 'La posizione resta valida 60 minuti; senza, l\'app usa la zona delle impostazioni. Il canale è segreto: non condividerlo (chi lo conosce può leggere la posizione inviata, ntfy.sh la tiene circa 12 ore).');
             ui.open('PHONE');
