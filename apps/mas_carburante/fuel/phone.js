@@ -69,6 +69,16 @@ function parseName(text) {
     return n === '-' ? '' : n;
 }
 
+/** "officina on" / "officina attiva" -> 'on'; "officina off" / "sblocca" / "disattiva" -> 'off'; else null (Siri Shortcuts). */
+function parseOfficina(text) {
+    const m = /^\s*officina\b[\s:=]*([a-zà]*)/i.exec(String(text || ''));
+    if (!m) return null;
+    const w = m[1].toLowerCase();
+    if (!w || w === 'on' || w === 'attiva' || w === 'si' || w === 'sì') return 'on';
+    if (w === 'off' || w === 'sblocca' || w === 'disattiva' || w === 'esci' || w === 'no') return 'off';
+    return null;
+}
+
 /** The car's topic, made once: { topic } */
 function topicFile(dataDir) {
     const file = path.join(dataDir || '.', 'ponte.json');
@@ -86,29 +96,35 @@ function topicFile(dataDir) {
  * onName(name, timeMs): the newest "nome ..." message on the topic (main.js keeps it if newer than the one it has).
  * http: fuel_http's client (lines(path, fn, host)).
  */
-function start(http, dataDir, log, enabled, onName) {
+function start(http, dataDir, log, enabled, onName, onOfficina) {
     const t = topicFile(dataDir);
-    let pos = null, busy = false, error = null, lastLogged = 0, places = [];
+    let pos = null, busy = false, error = null, lastLogged = 0, places = [], carplay = [], polledAt = 0;
     function poll() {
         if (busy || !enabled() || !http.online()) return;
         busy = true;
         let best = null, name = null;
-        const got = [];
+        const got = [], cp = [], cmds = [];
         http.lines('/' + t.topic + '/json?poll=1&since=' + SINCE, (line) => {
             let m;
             try { m = JSON.parse(line); } catch (e) { return; }
             if (!m || m.event !== 'message') return;
             const nm = parseName(m.message);
             if (nm !== null && (!name || m.time >= name.time)) name = { name: nm, time: m.time };
+            const oc = parseOfficina(m.message);
+            if (oc) { cmds.push({ cmd: oc, time: m.time * 1000 }); return; }
             const g = parseMsg(m.message);
             if (!g) return;
             const p = g.pos;
+            cp.push({ time: m.time * 1000, end: g.end });
             if (g.via || g.comune || g.end) got.push({ time: m.time * 1000, end: g.end, via: g.via, civ: g.civ, comune: g.comune,
                 lat: Math.round(p.lat * 1e4) / 1e4, lon: Math.round(p.lon * 1e4) / 1e4 });
             if (p && (!best || m.time >= best.time)) best = { lat: p.lat, lon: p.lon, time: m.time };
         }, HOST).then(() => {
             error = null;
             places = got;
+            carplay = cp;
+            polledAt = Date.now();
+            if (onOfficina) cmds.forEach((c) => { try { onOfficina(c.cmd, c.time); } catch (e) { log.warn('phone: officina: ' + e.message); } });
             if (name && onName) { try { onName(name.name, name.time * 1000); } catch (e) { log.warn('phone: name: ' + e.message); } }
             if (best) {
                 const at = best.time * 1000;
@@ -123,6 +139,9 @@ function start(http, dataDir, log, enabled, onName) {
         position: () => (pos && Date.now() - pos.at < FRESH_MS ? pos : null),
         /** The departures and arrivals with their street, from the last 12 hours: [{ time ms, end, via, civ, comune, lat, lon }] */
         places: () => places,
+        /** CarPlay connected / disconnected (the two Shortcuts), last 12 hours: [{ time ms, end }]; at: when last read */
+        carplay: () => carplay,
+        polledAt: () => polledAt,
         poll: poll,
         status: () => {
             if (!enabled()) return 'posizione dall\'iPhone spenta';
@@ -134,4 +153,4 @@ function start(http, dataDir, log, enabled, onName) {
     };
 }
 
-module.exports = { start, parsePos, parseMsg, parseName, topicFile, FRESH_MS };
+module.exports = { start, parsePos, parseMsg, parseName, parseOfficina, topicFile, FRESH_MS };

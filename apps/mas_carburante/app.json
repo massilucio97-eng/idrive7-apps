@@ -1,8 +1,8 @@
 {
   "id": "mas_carburante",
   "title": "Carburante",
-  "description": "I distributori più economici vicino a te, dai prezzi ufficiali del MIMIT (open data, aggiornati ogni giorno alle 8), e il diario dei rifornimenti con il consumo reale: i rifornimenti li trova da sola dal livello del serbatoio e dal contachilometri, tu tocchi il distributore dove hai fatto benzina. Solo lettura: non scrive nulla sull'auto. Internet dallo Store (mgu-uplink).",
-  "version": "0.10.1",
+  "description": "I distributori più economici vicino a te, dai prezzi ufficiali del MIMIT (open data, aggiornati ogni giorno alle 8), e il diario dei rifornimenti con il consumo reale: i rifornimenti li trova da sola dal livello del serbatoio e dal contachilometri, tu tocchi il distributore dove hai fatto benzina. Modalità officina: quando lasci l'auto a un meccanico nasconde i tuoi dati nelle nostre app dietro un PIN, registra il giro e te lo manda sul telefono. Solo lettura: non scrive nulla sull'auto. Internet dallo Store (mgu-uplink).",
+  "version": "0.11.0",
   "vendor": "mas",
   "loggingId": "MSF1",
   "mguHmi": [
@@ -122,6 +122,11 @@
           "Diario rifornimenti e consumo"
         ],
         [
+          "button",
+          "BTN_OFFICINA",
+          "Modalità officina"
+        ],
+        [
           "text",
           "MENU_SOURCE",
           "Tocca un distributore per andarci: Waze sul telefono · Fonte: MIMIT, Osservaprezzi carburanti (IODL 2.0)"
@@ -238,6 +243,103 @@
         [
           "scroll",
           "PHONE_TEXT",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "OFFICINA",
+      "kind": "list",
+      "title": "Modalità officina",
+      "items": [
+        [
+          "text",
+          "OF_STATE",
+          ""
+        ],
+        [
+          "text3",
+          "OF_INFO",
+          ""
+        ],
+        [
+          "text",
+          "OF_PIN",
+          ""
+        ],
+        [
+          "button",
+          "OF_D1",
+          "1"
+        ],
+        [
+          "button",
+          "OF_D2",
+          "2"
+        ],
+        [
+          "button",
+          "OF_D3",
+          "3"
+        ],
+        [
+          "button",
+          "OF_D4",
+          "4"
+        ],
+        [
+          "button",
+          "OF_D5",
+          "5"
+        ],
+        [
+          "button",
+          "OF_D6",
+          "6"
+        ],
+        [
+          "button",
+          "OF_D7",
+          "7"
+        ],
+        [
+          "button",
+          "OF_D8",
+          "8"
+        ],
+        [
+          "button",
+          "OF_D9",
+          "9"
+        ],
+        [
+          "button",
+          "OF_D0",
+          "0"
+        ],
+        [
+          "button",
+          "OF_DEL",
+          "Cancella"
+        ],
+        [
+          "button",
+          "OF_ON",
+          "Attiva la modalità officina"
+        ],
+        [
+          "button",
+          "OF_EXIT",
+          "Esci con il PIN"
+        ],
+        [
+          "button",
+          "OF_SETPIN",
+          "Imposta il PIN"
+        ],
+        [
+          "scroll",
+          "OF_HELP",
           ""
         ]
       ]
@@ -485,6 +587,40 @@
         [
           "20",
           "20 km"
+        ]
+      ]
+    },
+    {
+      "key": "officinaAuto",
+      "label": "Modalità officina: disattivala da sola quando il mio iPhone si ricollega",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "officinaSpeed",
+      "label": "Modalità officina: avvisami sopra",
+      "type": "choice",
+      "default": "90",
+      "options": [
+        [
+          "50",
+          "50 km/h"
+        ],
+        [
+          "70",
+          "70 km/h"
+        ],
+        [
+          "90",
+          "90 km/h"
+        ],
+        [
+          "110",
+          "110 km/h"
+        ],
+        [
+          "130",
+          "130 km/h"
         ]
       ]
     }

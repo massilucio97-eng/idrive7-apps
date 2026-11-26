@@ -33,6 +33,9 @@
  * the refuels and the totals, as a page (printable to PDF) and a CSV, sent to the phone as ntfy attachments on
  * <topic>-avvisi at the first start of a month for the month before, or with "Invia il riepilogo" on the diary.
  *
+ * Modalità officina (workshop.js, officina.js): before leaving the car to a mechanic, our apps behind a PIN (IPTV too), the
+ * trip recorded and sent to the phone; off with the PIN, from the phone, or by itself when the owner's iPhone comes back.
+ *
  * Read only: nothing is written to the car. Node 8: no ?., ?? or object spread.
  */
 const fs = require('fs');
@@ -47,6 +50,7 @@ const TR = require('./trend');
 const METEO = require('./meteo');
 const REPORT = require('./report');
 const APPLOG = require('./applog');
+const WORKSHOP = require('./workshop');
 const { createWelcome } = require('./welcome');
 const { RenderClient } = require('./kit/renderd');
 const record = require('./kit/record');
@@ -119,7 +123,9 @@ mgu.run({
             try { fs.writeFileSync(nameFile, JSON.stringify(who)); } catch (e) { /* kept for this run */ }
             log.info('welcome name ' + (n ? 'set' : 'removed'));
         };
-        const phone = PHONE.start(http, ctx.dataDir, log, () => true, onName);
+        // the "modalità officina" (workshop.js): its commands from the phone come with the position messages
+        let workshop = null;
+        const phone = PHONE.start(http, ctx.dataDir, log, () => true, onName, (cmd, at) => { if (workshop) workshop.command(cmd, at); });
         const pos = () => (settings.get('gps') !== false ? phone.position() : null);
         const near = (z, p) => z && z.gps && z.centre && M.km(z.centre.lat, z.centre.lon, p.lat, p.lon) < MOVE_KM;
         const fresh = () => {
@@ -177,6 +183,7 @@ mgu.run({
         }
         function maybeWelcome(why) {
             if (settings.get('welcome') === false || welcome.busy()) return;
+            if (workshop && workshop.on()) return;                                  // someone else is driving
             if (condition === 10 || (speed !== null && speed > 3)) return;          // driving: never
             if (Date.now() - lastWelcome < WELCOME_COOLDOWN_MS) return;
             lastWelcome = Date.now();
@@ -204,6 +211,69 @@ mgu.run({
         ctx.signals.watch('de.bmw.infotainment.vehicle.Vehicle2', '1', {
             statusCarSpeed2: (v) => { const k = v && v.speedVehicleCentreOfGravity; if (typeof k === 'number' && k !== 65535) speed = k * 0.015625; },
         }, log).catch((e) => log.warn('speed: ' + (e && e.message || e)));
+        /* ---------- the modalità officina: the trip of whoever has the car, our apps behind a PIN ---------- */
+        workshop = WORKSHOP.create({ dataDir: ctx.dataDir, log, http, topic: phone.topic, notifier, phone, settings,
+            car: { km: () => kmSeen, level: () => lastLevel, speed: () => speed }, changed: () => { render(); renderWorkshop(); } });
+        // the PIN typed on the screen OFFICINA: mode 'exit' (the mode on), 'new1' / 'new2' (a new PIN, twice)
+        const entry = { mode: null, digits: '', first: '', msg: '' };
+        function renderWorkshop() {
+            const on = workshop.on(), wst = workshop.state();
+            if (!on && entry.mode === 'exit') { entry.mode = null; entry.digits = ''; }
+            ui.text('OF_STATE', 'Modalità officina: ' + workshop.line());
+            ui.text('OF_INFO', on ? 'Il diario, i viaggi e il canale del telefono sono nascosti; IPTV mostra solo il PIN. Per i contatti e il navigatore BMW usa il profilo Ospite.'
+                : 'Quando lasci l\'auto a un meccanico o a un parcheggiatore: nasconde i tuoi dati nelle nostre app e registra il giro. ' +
+                  (wst.pin ? 'PIN impostato.' : 'Imposta prima un PIN di 4 cifre.'));
+            const waiting = entry.mode !== null;
+            const dots = '●●●●'.slice(0, entry.digits.length) + '○○○○'.slice(entry.digits.length);
+            const what = entry.mode === 'exit' ? 'PIN per uscire' : entry.mode === 'new1' ? 'Nuovo PIN' : entry.mode === 'new2' ? 'Ripeti il nuovo PIN' : '';
+            ui.text('OF_PIN', waiting ? what + ':  ' + dots.split('').join(' ') + (entry.msg ? '   ·   ' + entry.msg : '') : entry.msg);
+            ui.visible('OF_PIN', waiting || !!entry.msg);
+            for (let d = 0; d <= 9; d++) ui.visible('OF_D' + d, waiting);
+            ui.visible('OF_DEL', waiting);
+            ui.visible('OF_ON', !on && !waiting);
+            ui.visible('OF_EXIT', on && !waiting && !!wst.pin);
+            ui.visible('OF_SETPIN', !on && !waiting);
+            ui.text('OF_SETPIN', wst.pin ? 'Cambia il PIN' : 'Imposta il PIN');
+            ui.visible('OF_HELP', !on);
+        }
+        function digit(d) {
+            if (entry.mode === null || entry.digits.length >= 4) return;
+            entry.digits += d; entry.msg = '';
+            if (entry.digits.length < 4) { renderWorkshop(); return; }
+            const pin = entry.digits;
+            entry.digits = '';
+            if (entry.mode === 'exit') {
+                const r = workshop.tryPin(pin);
+                if (r.ok) { entry.mode = null; entry.msg = 'PIN corretto: modalità disattivata, resoconto inviato al telefono'; }
+                else if (r.wait) { entry.mode = null; entry.msg = 'Troppi tentativi: riprova tra ' + Math.ceil(r.wait / 60000) + ' min'; }
+                else entry.msg = 'PIN errato, ancora ' + r.left + (r.left === 1 ? ' tentativo' : ' tentativi');
+            } else if (entry.mode === 'new1') { entry.first = pin; entry.mode = 'new2'; }
+            else if (entry.mode === 'new2') {
+                if (pin === entry.first && workshop.setPin(pin)) { entry.mode = null; entry.msg = 'PIN salvato (in auto c\'è solo una sua versione cifrata)'; log.info('officina: PIN set'); }
+                else { entry.mode = 'new1'; entry.msg = 'I due PIN non coincidono: ricomincia'; }
+                entry.first = '';
+            }
+            render(); renderWorkshop();
+        }
+        for (let d = 0; d <= 9; d++) { const k = String(d); ui.onClick('OF_D' + k, () => digit(k)); }
+        ui.onClick('OF_DEL', () => { if (entry.digits) entry.digits = entry.digits.slice(0, -1); else { entry.mode = null; entry.msg = ''; } renderWorkshop(); });
+        ui.onClick('OF_ON', () => { entry.msg = ''; workshop.activate('dallo schermo'); renderWorkshop(); });
+        ui.onClick('OF_EXIT', () => {
+            const w = workshop.state();
+            if (Date.now() < (w.lockUntil || 0)) { entry.msg = 'Troppi tentativi: riprova tra ' + Math.ceil((w.lockUntil - Date.now()) / 60000) + ' min'; renderWorkshop(); return; }
+            entry.mode = 'exit'; entry.digits = ''; entry.msg = ''; renderWorkshop();
+        });
+        ui.onClick('OF_SETPIN', () => { entry.mode = 'new1'; entry.digits = ''; entry.first = ''; entry.msg = ''; renderWorkshop(); });
+        ui.onClick('BTN_OFFICINA', () => { entry.msg = ''; renderWorkshop(); ui.open('OFFICINA'); });
+        setInterval(() => { if (ui.isVisible('OFFICINA')) renderWorkshop(); }, 5000);
+        ui.text('OF_HELP', 'Come funziona: attivala prima di consegnare l\'auto. Mentre è attiva l\'app registra km, velocità massima, minuti sopra la velocità scelta ' +
+            'nelle impostazioni e carburante usato (senza percorso: il GPS dell\'auto non viene letto).\n' +
+            'Si disattiva da sola quando il tuo iPhone si ricollega all\'auto (CarPlay), dopo che se n\'era andato: serve il Comando rapido "CarPlay si connette" ' +
+            'già usato per la posizione. Se la attivi con il telefono collegato resta attiva finché il telefono non si scollega e torna. Oppure: il PIN qui o in IPTV.\n' +
+            'Dal telefono (anche con Siri): un Comando rapido con "Ottieni contenuto dell\'URL" https://ntfy.sh/' + phone.topic + ', metodo POST, corpo "officina on" ' +
+            'per attivarla, "officina off" per disattivarla. Funziona quando l\'auto è accesa e ha internet.\n' +
+            '3 PIN errati: il tastierino si ferma 5 minuti e ricevi un avviso. Il resoconto arriva sul telefono (app ntfy, canale -avvisi) appena l\'auto ha internet.');
+
         // the app starts with the head unit, which wakes when the car is opened: the welcome once the rest has come in
         setTimeout(() => maybeWelcome('start'), 6000);
 
@@ -260,6 +330,12 @@ mgu.run({
                 ui.visible('BTN_SKIP', false);
             }
             publishState(list);
+            // the modalità officina: the diary, the trips and the phone's channel out of sight
+            const wOn = !!(workshop && workshop.on());
+            ui.visible('BTN_DIARY', !wOn); ui.visible('BTN_PHONE', !wOn); ui.visible('LOG_INFO', !wOn);
+            if (wOn) ui.visible('BTN_SKIP', false);
+            ui.text('BTN_OFFICINA', wOn ? 'Modalità officina attiva · esci con il PIN' : 'Modalità officina');
+            if (wOn && (ui.isVisible('DIARY') || ui.isVisible('PHONE'))) ui.open('MAIN');
             if (status) info += ' · ' + status;
             else if (lastError) info += ' · ultimo aggiornamento non riuscito: ' + lastError;
             ui.text('MENU_INFO', info);

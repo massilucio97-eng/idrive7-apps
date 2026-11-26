@@ -18,6 +18,8 @@
  *             head unit, never through this app
  *   movies, series  the account's films and series: posters by category, a detail page (play, resume, start over;
  *             a series' seasons and episodes); they play on the same player screen, with a film's own bar
+ *   lock      the "modalità officina" (turned on in Carburante, lib/officina.js): playback stopped, the phone's remote
+ *             ignored, only a PIN keypad until it goes off (the PIN, or the owner's iPhone back)
  *
  * The picture shows while parked (lib/parkgate.js: under 1 km/h and in P); the setting "Video while driving" lets a
  * passenger watch. The sound plays either way. Favourites are kept in the app's data folder (favourites.json).
@@ -45,6 +47,7 @@ const qrcodegen = require('./qrcodegen');
 const { createRemote } = require('./remote');
 const uplink = require('./kit/uplink');
 const APPLOG = require('./applog');
+const OFFICINA = require('./officina');
 
 const VERSION = '0.4.5';
 const W = 1600, H = 520;
@@ -114,6 +117,9 @@ mgu.run({
             // the next episode after one ends (setting autonext): { f, at (when it starts), label }
             let nextUp = null, nextAsked = null, remoteRef = null;
             const isFilm = () => !!(st && st.playback && st.playback.kind === 'film');
+            // the modalità officina (lib/officina.js, turned on in Carburante): while on, only the PIN page
+            const lock = OFFICINA.watcher(ctx.dataDir);
+            const locked = () => lock.on();
             // where each film and episode stopped (resume), kept on the head unit with the app's data
             const RESUME_FILE = path.join(ctx.dataDir, 'resume.json');
             let resume = {}, resumeSaved = 0;
@@ -153,7 +159,7 @@ mgu.run({
                         cats = r.categories || []; catsAt = r.at;
                         if (catSel === null && cats.length) { const o = orderedCats(); catSel = (favs.length ? o[0] : cats.filter((c) => /qu[eé]bec/i.test(c.name))[0] || o[0]).id; }
                     }
-                    if (!signedIn() && page !== 'signin' && page !== 'soon' && page !== 'phone') page = 'signin';
+                    if (!signedIn() && page !== 'signin' && page !== 'soon' && page !== 'phone' && page !== 'lock') page = 'signin';
                     if (signedIn() && page === 'signin') { page = 'home'; say('Signed in'); }
                 } catch (e) {
                     svcErr = e.message; svcErrCode = e.code || null;
@@ -711,6 +717,7 @@ mgu.run({
             }
             let soonWhat = '';
             function go(p) {
+                if (locked()) return;
                 panel = null;
                 if (p === 'series' || p === 'movies') loadVodCats(p);
                 page = p;
@@ -1245,6 +1252,7 @@ mgu.run({
                         next: nextUp ? { name: nextUp.f.name, in: Math.max(0, Math.ceil((nextUp.at - Date.now()) / 1000)) } : null };
                 },
                 onCommand: guard('remote', (c) => {
+                    if (locked()) { log.info('remote: "' + c.op + '" ignored (modalità officina)'); return; }
                     const show = () => { ui.open('MAIN'); };
                     if (c.op === 'live') { play({ id: c.id, name: c.name }, null); show(); say('Dal telefono: ' + short(c.name)); }
                     else if (c.op === 'film' || c.op === 'episode') {
@@ -1300,11 +1308,63 @@ mgu.run({
                 }
                 cv.text(logLink ? 'Codice dei log: inquadralo e inoltrami il file' : 'Inquadra con la fotocamera dell\'iPhone', qx + qs / 2, qy + qs + 30, 16, C.grey, Object.assign({ align: 'center' }, M));
             }
+            /* ---------- the modalità officina (lib/officina.js, turned on in Carburante): only the PIN ---------- */
+            const pinIn = { digits: '', msg: '', msgUntil: 0 };
+            function lockTick() {
+                if (locked()) {
+                    if (playingCh || playingFilm) { log.info('officina: playback stopped'); stopPlay(); }
+                    if (page !== 'lock') { page = 'lock'; panel = null; pinIn.digits = ''; }
+                } else if (page === 'lock') { page = 'home'; pinIn.digits = ''; say('Modalità officina disattivata'); }
+            }
+            function pinKey(k) {
+                const w = lock.state();
+                if (Date.now() < (w.lockUntil || 0)) return;
+                if (k === 'del') { pinIn.digits = pinIn.digits.slice(0, -1); return; }
+                if (pinIn.digits.length >= 4) return;
+                pinIn.digits += k;
+                if (pinIn.digits.length < 4) return;
+                const r = OFFICINA.tryPin(ctx.dataDir, pinIn.digits, 'IPTV');
+                pinIn.digits = '';
+                lock.refresh();
+                pinIn.msgUntil = Date.now() + 4000;
+                pinIn.msg = r.ok ? 'PIN corretto' : r.wait ? '' : 'PIN errato · ' + r.left + (r.left === 1 ? ' tentativo rimasto' : ' tentativi rimasti');
+                log.info('officina: PIN ' + (r.ok ? 'right' : 'wrong'));
+                lockTick();
+            }
+            function drawLock(cv, A) {
+                const w = lock.state(), cx = A.x + A.w * 0.3, wait = Math.max(0, (w.lockUntil || 0) - Date.now());
+                // left: what this is
+                cv.roundRect(cx - 34, A.y + A.h / 2 - 150, 68, 68, 34, C.accentDim);
+                cv.strokeRoundRect(cx - 14, A.y + A.h / 2 - 122, 28, 22, 4, 3.5, C.accent);
+                cv.arc(cx, A.y + A.h / 2 - 122, 8, 11.5, 180, 360, C.accent);
+                cv.text('Modalità officina', cx, A.y + A.h / 2 - 30, 34, C.text, Object.assign({ align: 'center' }, B));
+                cv.text('IPTV è bloccata finché il proprietario non torna.', cx, A.y + A.h / 2 + 10, 18, C.grey, Object.assign({ align: 'center' }, M));
+                cv.text('Si sblocca da sola con il suo iPhone, o con il PIN.', cx, A.y + A.h / 2 + 38, 18, C.grey, Object.assign({ align: 'center' }, M));
+                const dy = A.y + A.h / 2 + 90;
+                for (let i = 0; i < 4; i++) {
+                    const x = cx - 54 + i * 36;
+                    if (i < pinIn.digits.length) cv.circle(x, dy, 9, C.text); else cv.arc(x, dy, 7.5, 10, 0, 360, C.grey);
+                }
+                const msg = wait ? 'Troppi tentativi: riprova tra ' + Math.ceil(wait / 1000) + ' s' : Date.now() < pinIn.msgUntil ? pinIn.msg : '';
+                if (msg) cv.text(msg, cx, dy + 46, 18, wait || !/corretto/.test(msg) ? '#F09595' : '#5DCAA5', Object.assign({ align: 'center' }, B));
+                // right: the keypad
+                const kw = 116, kh = Math.min(96, (A.h - 60) / 4 - 10), gap = 12, kx = A.x + A.w * 0.62, ky = A.y + (A.h - (4 * kh + 3 * gap)) / 2;
+                const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0', ''];
+                keys.forEach((k, i) => {
+                    if (!k) return;
+                    const x = kx + (i % 3) * (kw + gap), y = ky + Math.floor(i / 3) * (kh + gap);
+                    cv.roundRect(x, y, kw, kh, 18, wait ? '#141416' : C.card);
+                    cv.text(k === 'del' ? 'Cancella' : k, x + kw / 2, y + kh / 2 + (k === 'del' ? 7 : 12), k === 'del' ? 20 : 34, wait ? C.dim : C.text, Object.assign({ align: 'center' }, k === 'del' ? M : B));
+                    btn(cv, 'pin_' + (k === 'del' ? 'del' : k), x, y, kw, kh, () => pinKey(k), 18);
+                });
+            }
+            setInterval(guard('officina', lockTick), 1000);
+
             ui.onClick('BTN_HOME', guard('home', () => go('home')));
             ui.onClick('BTN_LIVE', guard('live', () => go('live')));
-            ui.onClick('BTN_WATCH', guard('watch', () => { if (playingCh) { page = 'player'; overlayUntil = Date.now() + 6000; } }));
+            ui.onClick('BTN_WATCH', guard('watch', () => { if (playingCh && !locked()) { page = 'player'; overlayUntil = Date.now() + 6000; } }));
             ui.onClick('BTN_STOP', guard('stop', stopPlay));
-            ui.onClick('BTN_SIGNIN', guard('signin', () => { go('signin'); svc.ask({ cmd: 'signin-open' }).then(poll, () => {}); }));
+            ui.onClick('BTN_SIGNIN', guard('signin', () => { if (locked()) return; go('signin'); svc.ask({ cmd: 'signin-open' }).then(poll, () => {}); }));
             ctx.loop('MAIN', 10, guard('draw', async () => {
                 const cv = ctx.canvas(W, H), A = FS.area(cv), fullH = H + (cv.extra || 0);
                 if (cv.chrome) G.frame(cv, ctx.theme(), ['IPTV'], 0, []);
@@ -1317,9 +1377,11 @@ mgu.run({
                     fv.draw((rec, FH) => drawPlayer(rec, { x: 96, y: 24, right: W - 40, bottom: FH - 20, w: W - 136, h: FH - 44, own: true }, FH));
                 } else if (page === 'player') drawPlayer(cv, A, fullH);
                 else {
-                    rail(cv, A);
+                    if (page === 'lock') drawLock(cv, A);
+                    else rail(cv, A);
                     const x0 = A.x + 128;
-                    if (page === 'signin' || (!signedIn() && page !== 'soon' && page !== 'phone')) drawSignin(cv, A, x0);
+                    if (page === 'lock') { /* only the PIN */ }
+                    else if (page === 'signin' || (!signedIn() && page !== 'soon' && page !== 'phone')) drawSignin(cv, A, x0);
                     else if (page === 'home') drawHome(cv, A, x0);
                     else if (page === 'live') drawLive(cv, A, x0);
                     else if (page === 'search') drawSearch(cv, A, x0);

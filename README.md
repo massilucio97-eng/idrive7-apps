@@ -39,6 +39,11 @@ tested on a BMW 118i (F40), iDrive 7 MGU, software P18_23w44.
   by street of departure and arrival** (nearby house numbers count as one place).
 - **Portami lì**: a tap on a station sends the phone a notification that opens Waze (or Apple Maps) there.
 - **Send the log to the phone** when something does not work.
+- **Real cost of a full tank**: stations sorted by price plus the road to get there.
+- **Modalità officina** (workshop mode): before leaving the car to a mechanic or a valet, our apps hide your data
+  behind a 4-digit PIN (IPTV shows only a keypad), the trip is recorded (km, top speed, minutes over a chosen speed,
+  fuel used) and sent to the phone. It turns itself off when your iPhone reconnects, or with the PIN, or from the phone
+  (Siri). It does not touch BMW's own menus (use the Guest profile) and it is not an anti-theft.
 
 ### IPTV improvements (`apps/amn_iptv`, `native/amn-iptv`, `native/tvh-player`)
 - **Stretch** picture mode: full screen, stretched instead of cropped or letterboxed (change in `tvh-player`,
@@ -49,6 +54,7 @@ tested on a BMW 118i (F40), iDrive 7 MGU, software P18_23w44.
 - **Next episode automatically** after 10 s, cancellable on the screen and on the phone.
 - **Favourite channels synced** between the car and the phone.
 - **Send the log to the phone** (app and service), shown as a QR code.
+- **Modalità officina**: while Carburante's workshop mode is on, playback stops, the phone remote is ignored and only a PIN keypad shows.
 
 ### iPhone scripts (`extras/`)
 - `carburante_widget.js`: Home-screen widget (Scriptable) with range, km/l, the cheapest station and the price

@@ -67,3 +67,26 @@ Stations are sorted by what a full tank really costs: the price times the litres
 del serbatoio*, minus what is in it, from the car) plus the road there and back (straight line x 1.35, at the real
 consumption, else 6.5 l/100 km). Each row shows the full tank, the road's share and how much more than the first; the
 first is marked ★ Conviene. Setting *Ordina i distributori per*: real cost (default) or price per litre only.
+
+## Modalità officina (0.11.0)
+
+For when the car goes to a mechanic or a valet. *Modalità officina* on the main screen opens the screen OFFICINA:
+set a 4-digit PIN once (typed twice; the car keeps only salt + PBKDF2 of it), then *Attiva la modalità officina*, or from
+the phone: a Shortcut (Siri) that POSTs `officina on` to `https://ntfy.sh/<topic>` (`officina off` turns it off).
+
+While on:
+- Carburante hides the diary, the trips and the phone's page; IPTV stops playing, ignores its phone remote and shows only
+  a PIN keypad. BMW's own menus are not touched: use the iDrive's Guest profile for contacts and navigation. Whoever
+  knows mgu-store can still disable the apps: it is a privacy lock, not an anti-theft.
+- The trip is recorded from the car's signals: km, top speed and when, minutes moving, minutes over the setting
+  *Modalità officina: avvisami sopra* (default 90 km/h), fuel used. No route: the car's GPS is not read.
+- A wrong PIN (here or in IPTV) is a notification; after 3 the keypad stops for 5 minutes.
+
+Off: the PIN (Carburante or IPTV), `officina off` from the phone, or by itself (setting *disattivala da sola quando il mio
+iPhone si ricollega*): once the iPhone has gone (a "CarPlay si disconnette" message after the mode went on, or the car
+offline 5 minutes, its hotspot gone with the phone), the next "CarPlay si connette" turns it off. Turned on with the
+phone connected, it stays on while the phone stays. Then the report goes to the phone (ntfy, channel `-avvisi`), kept
+until the car has internet.
+
+The lock is shared through `/dev/shm/mgu-officina.json` (and each app's own `officina.json`, so it survives a restart);
+`fuel/officina.js` and IPTV's `lib/officina.js` are the same file.
