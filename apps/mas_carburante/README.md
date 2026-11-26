@@ -47,5 +47,6 @@ with *Invia il riepilogo di questo mese* on the diary page. ntfy.sh keeps an att
 
 The streets come from the phone: the Shortcut "CarPlay si connette" sends `lat;lon;via;città` (departure), a second
 one "CarPlay si disconnette" sends `fine;lat;lon;via;città` (arrival). The car reads the channel's last 12 hours; a
-trip without its arrival takes the next trip's departure. Streets are kept only in the car's diary and in the
+trip without its arrival takes the next trip's departure. Places on the same street within a distance (setting, default 300 m) are one place, the house numbers shown as a
+range ("Corso Francia 120-145, Collegno"); far apart on a long street, two places. Addresses are kept only in the car's diary and in the
 attachments (whoever has the channel or the attachment's link can read them).

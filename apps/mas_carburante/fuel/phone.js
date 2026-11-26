@@ -54,10 +54,11 @@ function parseMsg(text) {
     const p = parsePos(parts[0] + ';' + parts[1]);
     if (!p) return null;
     const clip = (x) => String(x || '').replace(/\s+/g, ' ').trim().slice(0, 60);
-    // the street without its house number ("Viale San Giovanni Bosco 12" -> "Viale San Giovanni Bosco"): trips from
-    // the same street group together, and the exact address is not kept
-    const street = clip(parts[2]).replace(/(?:[\s,]+(?:n\.?\s*)?\d+\s*[A-Za-z]?(?:\s*\/\s*[A-Za-z0-9]+)?)+$/i, '').trim();
-    return { pos: p, end: end, via: street, comune: clip(parts[3]) };
+    // the street and its house number apart ("Corso Francia 145" -> via "Corso Francia", civ "145"): report.js groups
+    // the places on one street within a distance, so the numbers near each other count as one place
+    const full = clip(parts[2]), m = /^(.*?)(?:[\s,]+(?:n\.?\s*)?(\d+\s*[A-Za-z]?(?:\s*\/\s*[A-Za-z0-9]+)?))$/i.exec(full);
+    const street = m && m[1].trim() ? m[1].trim() : full, civ = m && m[1].trim() ? m[2].replace(/\s+/g, '') : '';
+    return { pos: p, end: end, via: street, civ: civ, comune: clip(parts[3]) };
 }
 
 /** "nome Massimo" (the welcome's name, sent from the ntfy web page or app) -> 'Massimo'; "nome -" or "nome" -> ''; else null. */
@@ -102,7 +103,8 @@ function start(http, dataDir, log, enabled, onName) {
             const g = parseMsg(m.message);
             if (!g) return;
             const p = g.pos;
-            if (g.via || g.comune || g.end) got.push({ time: m.time * 1000, end: g.end, via: g.via, comune: g.comune });
+            if (g.via || g.comune || g.end) got.push({ time: m.time * 1000, end: g.end, via: g.via, civ: g.civ, comune: g.comune,
+                lat: Math.round(p.lat * 1e4) / 1e4, lon: Math.round(p.lon * 1e4) / 1e4 });
             if (p && (!best || m.time >= best.time)) best = { lat: p.lat, lon: p.lon, time: m.time };
         }, HOST).then(() => {
             error = null;
@@ -119,7 +121,7 @@ function start(http, dataDir, log, enabled, onName) {
     return {
         topic: t.topic,
         position: () => (pos && Date.now() - pos.at < FRESH_MS ? pos : null),
-        /** The departures and arrivals with their street, from the last 12 hours: [{ time ms, end, via, comune }] */
+        /** The departures and arrivals with their street, from the last 12 hours: [{ time ms, end, via, civ, comune, lat, lon }] */
         places: () => places,
         poll: poll,
         status: () => {

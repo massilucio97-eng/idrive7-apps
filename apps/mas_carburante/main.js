@@ -365,7 +365,7 @@ mgu.run({
             if (reportBusy) return Promise.resolve(false);
             if (!http.online()) { reportMsg = 'Riepilogo non inviato: auto offline'; renderDiary(); return Promise.resolve(false); }
             reportBusy = true; reportMsg = 'Invio il riepilogo al telefono...'; renderDiary();
-            const r = REPORT.build(diary, year, month), sm = r.summary, ch = '/' + phone.topic + '-avvisi';
+            const r = REPORT.build(diary, year, month, Number(settings.get('groupM')) || 300), sm = r.summary, ch = '/' + phone.topic + '-avvisi';
             const msg = sm.trips + ' viaggi · ' + sm.km + ' km · carburante ' + sm.eur.toFixed(2).replace('.', ',') + ' €' +
                 (sm.eurKm ? ' · ' + sm.eurKm.toFixed(3).replace('.', ',') + ' €/km' : '') + '. Apri l\'allegato (resta scaricabile 3 ore).';
             return http.put(ch, r.html, { title: r.title, message: msg, filename: 'spese-auto-' + r.key + '.html', tags: 'page_facing_up' })

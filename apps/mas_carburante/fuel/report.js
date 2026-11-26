@@ -7,8 +7,11 @@
  * departure), "CarPlay si disconnette" sends "fine;lat;lon;via;comune" (the arrival). A trip without its own
  * arrival takes the next trip's departure (the car did not move in between).
  *
- *   build(diary, year, month) -> { key: 'AAAA-MM', title, html, csv, summary: { km, eur, trips, refuels, eurKm, kml } }
+ *   build(diary, year, month, groupM) -> { key: 'AAAA-MM', title, html, csv, summary: { km, eur, trips, refuels, eurKm, kml } }
  *   placeTrips(diary, places) -> how many trips got a street (places: [{ time ms, end: bool, via, comune }])
+ *
+ * Places: the same street (and comune) within GROUP_M metres (setting, default 300) are one place, so the house
+ * numbers near each other count together ("Corso Francia 120-145, Collegno"); far apart on a long street, two places.
  *
  * Pure functions. Node 8: no ?., ?? or object spread.
  */
@@ -26,7 +29,38 @@ const csvCell = (s) => { const t = String(s === null || s === undefined ? '' : s
 const two = (x) => ('0' + x).slice(-2);
 const dayText = (ms) => { const d = new Date(ms); return two(d.getDate()) + '/' + two(d.getMonth() + 1); };
 const timeText = (ms) => { const d = new Date(ms); return two(d.getHours()) + ':' + two(d.getMinutes()); };
-const placeText = (p) => (p ? [p.via, p.comune].filter(Boolean).join(', ') || 'posizione senza via' : 'sconosciuta');
+const placeText = (p) => (p ? [[p.via, p.civ].filter(Boolean).join(' '), p.comune].filter(Boolean).join(', ') || 'posizione senza via' : 'sconosciuta');
+const M = require('./mimit');
+const norm = (x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+const civNum = (c) => { const n = parseInt(c, 10); return isFinite(n) ? n : null; };
+
+/** Places into groups: same street and comune, within groupM metres of the group's first place. */
+function grouper(groupM) {
+    const groups = [];
+    return {
+        of(p) {
+            if (!p) return null;
+            const k = norm(p.via) + '|' + norm(p.comune);
+            let g = null;
+            for (let i = 0; i < groups.length && !g; i++) {
+                const h = groups[i];
+                if (h.k !== k) continue;
+                const near = typeof p.lat === 'number' && typeof h.lat === 'number' ? M.km(p.lat, p.lon, h.lat, h.lon) * 1000 <= groupM
+                    : (p.civ || '') === (h.civs[0] || '');
+                if (near) g = h;
+            }
+            if (!g) { g = { k: k, via: p.via, comune: p.comune, lat: p.lat, lon: p.lon, civs: [] }; groups.push(g); }
+            if (p.civ && g.civs.indexOf(p.civ) < 0) g.civs.push(p.civ);
+            return g;
+        },
+        label(g) {
+            if (!g) return 'sconosciuta';
+            const ns = g.civs.map(civNum).filter((n) => n !== null).sort((a, b) => a - b);
+            const civ = !g.civs.length ? '' : g.civs.length === 1 ? g.civs[0] : ns.length ? ns[0] + (ns[ns.length - 1] !== ns[0] ? '-' + ns[ns.length - 1] : '') : g.civs[0];
+            return placeText({ via: g.via, civ: civ, comune: g.comune });
+        },
+    };
+}
 
 /** Streets onto the trips that have none yet, from the phone's messages. */
 function placeTrips(diary, places) {
@@ -37,18 +71,19 @@ function placeTrips(diary, places) {
         if (!t.from) {
             let best = null;
             starts.forEach((p) => { if (p.time >= t.start - START_BEFORE && p.time <= t.start + START_AFTER && (!best || p.time > best.time)) best = p; });
-            if (best) { t.from = { via: best.via || '', comune: best.comune || '' }; n++; }
+            if (best) { t.from = { via: best.via || '', civ: best.civ || '', comune: best.comune || '', lat: best.lat, lon: best.lon }; n++; }
         }
         if (!t.to) {
             let best = null;
             ends.forEach((p) => { if (p.time >= t.end - END_BEFORE && p.time <= t.end + END_AFTER && (!best || p.time < best.time)) best = p; });
-            if (best) { t.to = { via: best.via || '', comune: best.comune || '' }; n++; }
+            if (best) { t.to = { via: best.via || '', civ: best.civ || '', comune: best.comune || '', lat: best.lat, lon: best.lon }; n++; }
         }
     });
     return n;
 }
 
-function build(diary, year, month) {
+function build(diary, year, month, groupM) {
+    const G = grouper(Number(groupM) || 300);
     const inMonth = (ms) => { const d = new Date(ms); return d.getFullYear() === year && d.getMonth() === month; };
     const all = diary.trips || [];
     const trips = [];
@@ -56,8 +91,10 @@ function build(diary, year, month) {
         if (!inMonth(t.start)) return;
         const next = all[i + 1];
         const to = t.to || (next && next.from && next.start - t.end < 7 * 86400000 ? next.from : null);
-        trips.push({ t: t, from: placeText(t.from), to: placeText(to) });
+        trips.push({ t: t, gf: G.of(t.from), gt: G.of(to) });
     });
+    // labels once every place is in: a group's numbers as a range
+    trips.forEach((x) => { x.from = G.label(x.gf); x.to = G.label(x.gt); });
     // grouped by departure and arrival
     const groups = {};
     trips.forEach((x) => {

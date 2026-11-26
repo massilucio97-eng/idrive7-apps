@@ -2,7 +2,7 @@
   "id": "mas_carburante",
   "title": "Carburante",
   "description": "I distributori più economici vicino a te, dai prezzi ufficiali del MIMIT (open data, aggiornati ogni giorno alle 8), e il diario dei rifornimenti con il consumo reale: i rifornimenti li trova da sola dal livello del serbatoio e dal contachilometri, tu tocchi il distributore dove hai fatto benzina. Solo lettura: non scrive nulla sull'auto. Internet dallo Store (mgu-uplink).",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "vendor": "mas",
   "loggingId": "MSF1",
   "mguHmi": [
@@ -297,6 +297,30 @@
       "label": "Riepilogo spese del mese sul telefono a inizio mese",
       "type": "bool",
       "default": true
+    },
+    {
+      "key": "groupM",
+      "label": "Riepilogo: indirizzi della stessa via uniti se distano meno di",
+      "type": "choice",
+      "default": "300",
+      "options": [
+        [
+          "100",
+          "100 m"
+        ],
+        [
+          "300",
+          "300 m"
+        ],
+        [
+          "500",
+          "500 m"
+        ],
+        [
+          "1000",
+          "1 km"
+        ]
+      ]
     },
     {
       "key": "fuel",
