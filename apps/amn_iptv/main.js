@@ -42,6 +42,8 @@ const WHEEL = require('./wheel');
 const LOGO = require('./logos');
 const KB = require('./keyboard');
 const qrcodegen = require('./qrcodegen');
+const { createRemote } = require('./remote');
+const uplink = require('./kit/uplink');
 
 const VERSION = '0.4.5';
 const W = 1600, H = 520;
@@ -654,7 +656,7 @@ mgu.run({
             function rail(cv, A) {
                 const x = A.x, w = 108;
                 cv.roundRect(x, A.y, w, A.h, 28, C.rail);
-                const items = [['home', 'Home'], ['live', 'Live TV'], ['search', 'Search'], ['series', 'Series'], ['movies', 'Movies']];
+                const items = [['home', 'Home'], ['live', 'Live TV'], ['search', 'Search'], ['series', 'Series'], ['movies', 'Movies'], ['phone', 'Telefono']];
                 const step = Math.min(96, (A.h - 40) / items.length);
                 items.forEach((it, i) => {
                     const cy = A.y + 24 + i * step + step / 2;
@@ -685,6 +687,8 @@ mgu.run({
                     cv.arc(cx - 3, cy - 3, 9, 12.5, 0, 360, col); cv.line(cx + 5, cy + 5, cx + 14, cy + 14, 4, col);
                 } else if (kind === 'series') {
                     cv.strokeRoundRect(cx - 16, cy - 12, 32, 21, 4, 3.5, col); cv.line(cx - 8, cy + 15, cx + 8, cy + 15, 3.5, col);
+                } else if (kind === 'phone') {
+                    cv.strokeRoundRect(cx - 10, cy - 16, 20, 32, 5, 3.5, col); cv.fillRect(cx - 4, cy + 9, 8, 3, col);
                 } else if (kind === 'movies') {
                     cv.strokeRoundRect(cx - 16, cy - 13, 32, 27, 4, 3.5, col); cv.line(cx - 8, cy - 13, cx - 8, cy + 14, 3, col); cv.line(cx + 8, cy - 13, cx + 8, cy + 14, 3, col);
                 }
@@ -1171,6 +1175,47 @@ mgu.run({
 
             /* ---------- the frame ---------- */
             FS.setup(ctx);
+            /* ---------- the phone as the remote (lib/remote.js, extras/iptv_telecomando.js) ---------- */
+            const remote = createRemote({ dataDir: ctx.dataDir, log, uplink,
+                status: () => {
+                    const pb = st && st.playback;
+                    if (!pb || !(playingCh || playingFilm)) return { state: 'idle' };
+                    return { state: pb.state, kind: playingFilm ? (playingFilm.kind === 'series' ? 'episode' : 'film') : 'live',
+                        name: playingFilm ? playingFilm.name : playingCh.name, pos: Math.floor(pb.pos || 0), dur: Math.floor(pb.duration || 0),
+                        picture: pictureAllowed() };
+                },
+                onCommand: guard('remote', (c) => {
+                    const show = () => { ui.open('MAIN'); };
+                    if (c.op === 'live') { play({ id: c.id, name: c.name }, null); show(); say('Dal telefono: ' + short(c.name)); }
+                    else if (c.op === 'film' || c.op === 'episode') {
+                        const key = (c.op === 'film' ? 'movie:' : 'episode:') + c.id, r = resume[key];
+                        playFilm({ kind: c.op === 'film' ? 'movie' : 'series', id: Number(c.id), ext: c.ext, name: c.name, duration: c.duration || null, key }, r && r.pos > 30 ? r.pos : 0);
+                        show(); say('Dal telefono: ' + short(c.name) + (r && r.pos > 30 ? ' (riprendo da ' + hms(r.pos) + ')' : ''));
+                    }
+                    else if (c.op === 'stop') stopPlay();
+                    else if (c.op === 'pause') filmCmd('film-pause');
+                    else if (c.op === 'resume') filmCmd('film-resume');
+                    else if (c.op === 'seek') skip(c.by);
+                    else if (c.op === 'next') zap(1);
+                    else if (c.op === 'prev') zap(-1);
+                }) });
+            function drawPhone(cv, A, x0) {
+                const right = A.right, lx = x0 + 20, tw = Math.round((right - x0) * 0.55);
+                cv.text('Telecomando sul telefono', lx, A.y + 60, 36, C.text, B);
+                const lines = ['Sfoglia tutta la playlist sull\'iPhone (TV, film, serie) e guardala qui.', '',
+                    '1.  Installa Scriptable dall\'App Store e aggiungi lo script', '     "IPTV Telecomando" (iptv_telecomando.js).',
+                    '2.  Inquadra il codice con la fotocamera: collega il telefono a questa auto.',
+                    '3.  La prima volta inserisci server, utente e password Xtream sul telefono.', '',
+                    'Canale: ' + remote.topic + '   ·   ' + ({ connected: 'collegato', connecting: 'mi collego...', offline: 'auto offline' })[remote.state()]];
+                lines.forEach((l, i) => cv.text(fit(cv, l, 19, tw, M), lx, A.y + 110 + i * 32, 19, i === 0 || i === lines.length - 1 ? C.grey : C.text, M));
+                const qx = right - 360, qy = A.y + 20, qs = 320;
+                cv.roundRect(qx, qy, qs, qs, 24, '#ffffff');
+                const qr = qrOf('scriptable:///run/IPTV%20Telecomando?topic=' + remote.topic), m = (qs - 24) / (qr.size + 6);
+                for (let y = 0; y < qr.size; y++) {
+                    for (let x = 0; x < qr.size; x++) if (qr.getModule(x, y)) cv.fillRect(qx + 12 + (x + 3) * m, qy + 12 + (y + 3) * m, m + 0.6, m + 0.6, '#000000');
+                }
+                cv.text('Inquadra con la fotocamera dell\'iPhone', qx + qs / 2, qy + qs + 30, 16, C.grey, Object.assign({ align: 'center' }, M));
+            }
             ui.onClick('BTN_HOME', guard('home', () => go('home')));
             ui.onClick('BTN_LIVE', guard('live', () => go('live')));
             ui.onClick('BTN_WATCH', guard('watch', () => { if (playingCh) { page = 'player'; overlayUntil = Date.now() + 6000; } }));
@@ -1196,6 +1241,7 @@ mgu.run({
                     else if (page === 'search') drawSearch(cv, A, x0);
                     else if (page === 'movies' || page === 'series') drawVod(cv, A, x0, page);
                     else if (page === 'detail') drawDetail(cv, A, x0);
+                    else if (page === 'phone') drawPhone(cv, A, x0);
                     else drawSoon(cv, A, x0);
                 }
                 if (toast && Date.now() < toast.until) {

@@ -43,3 +43,13 @@ leschi's MGU Media Client (park check, keyboard, PNG decoder; MIT), jpeg-js (BSD
 Nayuki's QR code generator (MIT); fonts: Inter (OFL). The sound route (source 287 to the front speakers) is
 Moonride's, as aurelmarius' TVH Player uses it. The service is built from aurelmarius' TVH Player service
 (GPL-3.0-or-later).
+
+## Telecomando sul telefono (0.5.0)
+
+The whole playlist on the iPhone (live TV with what is on, films with plot and duration, series by season and
+episode, search, favourites): `extras/iptv_telecomando.js` in Scriptable browses the Xtream server itself and sends
+"play this" to the car through a private ntfy.sh topic made on the car (lib/remote.js: the car keeps a streaming
+connection open, so a command arrives in about a second; what plays goes back on `<topic>-ora` for the phone's
+now-playing row with pause, ±30 s, stop, next / previous channel). The IPTV's new page "Telefono" shows the topic
+and a QR code that opens the script already linked. The Xtream login stays in the phone's Keychain; the topic only
+carries what to play. The picture still shows only while parked (or with the passenger setting).
