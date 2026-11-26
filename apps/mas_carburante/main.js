@@ -367,6 +367,10 @@ mgu.run({
                 title(s.addr) + ', ' + title(s.comune) + ' (' + kmText(s.km) + '). Tocca per aprire Waze.', ['round_pushpin', 'fuelpump'], 4,
                 { click: waze, actions: [{ action: 'view', label: 'Waze', url: waze, clear: true }, { action: 'view', label: 'Mappe', url: maps, clear: true }] });
             sentTo = s.id;
+            // also alone on <topic>-portami (its last message is always the last station): the Siri Shortcut "Portami lì"
+            // reads it with since=latest and opens Waze, hands-free
+            if (http.online()) http.post('/', JSON.stringify({ topic: phone.topic + '-portami', title: (s.brand || 'Pompa bianca') + ' ' + euro(s.price),
+                message: waze, click: waze })).catch((e) => log.warn('portami: ' + (e.message || e)));
             log.info('take me there: ' + s.id);
             render(ok ? 'inviato al telefono: tocca la notifica per aprire Waze' : 'notifiche spente nelle impostazioni: attivale per "Portami lì"');
         }
