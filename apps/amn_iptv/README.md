@@ -53,3 +53,9 @@ connection open, so a command arrives in about a second; what plays goes back on
 now-playing row with pause, ±30 s, stop, next / previous channel). The IPTV's new page "Telefono" shows the topic
 and a QR code that opens the script already linked. The Xtream login stays in the phone's Keychain; the topic only
 carries what to play. The picture still shows only while parked (or with the passenger setting).
+
+## Episodio successivo (0.5.1)
+
+When an episode ends, the next one (same season, else the next season's first, from the service's series info)
+starts after 10 s: a card with a countdown ring, *Guarda ora* and *Annulla*, also on the phone remote's now-playing
+row. Setting *Episodio successivo in automatico* (on by default). Episodes started from the phone carry their series.

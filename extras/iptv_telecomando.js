@@ -145,6 +145,12 @@ async function nowBar() {
     : [["-30s", { op: "seek", by: -30 }], [s.state === "paused" ? "▶︎" : "⏸", { op: s.state === "paused" ? "resume" : "pause" }], ["+30s", { op: "seek", by: 30 }], ["⏹", { op: "stop" }]];
   btns.forEach((b) => { const x = r.addButton(b[0]); x.centerAligned(); x.onTap = async () => { await send(b[1]); setTimeout(render, 2500); }; });
   table.addRow(r);
+  if (s.next) {
+    row("Prossimo episodio tra " + s.next.in + " s", s.next.name, null, { icon: "forward.end", tint: new Color("#AFA9EC") });
+    const r2 = new UITableRow(); r2.height = 46; r2.dismissOnSelect = false;
+    [["Guarda ora", { op: "next-now" }], ["Annulla", { op: "next-cancel" }]].forEach((b) => { const x = r2.addButton(b[0]); x.centerAligned(); x.onTap = async () => { await send(b[1]); setTimeout(render, 2000); }; });
+    table.addRow(r2);
+  }
 }
 
 // home
@@ -220,7 +226,7 @@ async function episodes(sr, n, list) {
     const num = e.episode_num || i + 1, dur = Number(e.info && e.info.duration_secs) || 0;
     row(num + ". " + (e.title || "Episodio " + num), [mins(dur), "tocca per guardare in auto"].filter(Boolean).join(" · "), async () => {
       const name = sr.name + "  S" + n + " E" + num;
-      if (await send({ op: "episode", id: String(e.id), ext: e.container_extension || "mp4", name, duration: dur })) { await note("In auto: " + name); stack.splice(1); render(); }
+      if (await send({ op: "episode", id: String(e.id), ext: e.container_extension || "mp4", name, duration: dur, series: String(sr.series_id) })) { await note("In auto: " + name); stack.splice(1); render(); }
     }, { img: (e.info && e.info.movie_image) || null, icon: (e.info && e.info.movie_image) ? null : "play.rectangle", height: 66 });
   });
 }

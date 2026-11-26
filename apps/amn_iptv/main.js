@@ -110,6 +110,8 @@ mgu.run({
             const scroll = { cats: 0, chans: 0, favs: 0, results: 0, guide: 0, vcats: 0, vgrid: 0, eps: 0 };
             // films and series (declared here: the first status poll already reads them)
             let detail = null, playingFilm = null;
+            // the next episode after one ends (setting autonext): { f, at (when it starts), label }
+            let nextUp = null, nextAsked = null, remoteRef = null;
             const isFilm = () => !!(st && st.playback && st.playback.kind === 'film');
             // where each film and episode stopped (resume), kept on the head unit with the app's data
             const RESUME_FILE = path.join(ctx.dataDir, 'resume.json');
@@ -143,6 +145,7 @@ mgu.run({
                 try {
                     st = await svc.ask({ cmd: 'status' });
                     trackResume();
+                    nextCheck();
                     svcErr = null; svcErrCode = null;
                     if (signedIn() && st.client && st.client.state === 'connected' && (!cats.length || (st.categories && st.categories.at !== catsAt))) {
                         const r = await svc.ask({ cmd: 'categories' });
@@ -250,6 +253,7 @@ mgu.run({
             process.once('exit', () => { try { audio.want(false); } catch (e) { /* ending */ } });
             function play(c, list) {
                 if (!c) return;
+                nextUp = null;
                 playingCh = { id: c.id, name: c.name, icon: c.icon || '', cat: c.cat || '' };
                 playingFilm = null;
                 if (list) zapList = list;
@@ -257,6 +261,7 @@ mgu.run({
                 svc.ask({ cmd: 'play', id: c.id, name: c.name }).then(poll, (e) => say(e.message));
             }
             function stopPlay() {
+                nextUp = null;
                 trackResume(); saveResume(true);
                 svc.ask({ cmd: 'stop' }).then(poll, () => {});
                 const wasFilm = !!playingFilm;
@@ -455,7 +460,42 @@ mgu.run({
                     else { d.info = r.info; if (kind === 'series' && r.info.seasons && r.info.seasons.length) d.season = r.info.seasons[0].n; }
                 }, (e) => { if (detail === d) d.error = e.message; });
             }
+            /** The episode after f (same season, else the next season's first), from the service's series info, or null. */
+            function findNext(f) {
+                if (!f || f.kind !== 'series' || !f.series) return Promise.resolve(null);
+                return svc.ask({ cmd: 'series-info', id: f.series }, 35000).then((r) => {
+                    const info = r && r.info, seasons = (info && info.seasons) || [];
+                    for (let si = 0; si < seasons.length; si++) {
+                        const eps = seasons[si].episodes || [];
+                        for (let ei = 0; ei < eps.length; ei++) {
+                            if (String(eps[ei].id) !== String(f.id)) continue;
+                            const next = eps[ei + 1] ? { s: seasons[si], e: eps[ei + 1], i: ei + 1 } : seasons[si + 1] && (seasons[si + 1].episodes || [])[0] ? { s: seasons[si + 1], e: seasons[si + 1].episodes[0], i: 0 } : null;
+                            if (!next) return null;
+                            const n = next.e.n != null ? next.e.n : next.i + 1, sname = (info && info.name) || f.seriesName || String(f.name).replace(/\s+S\d+\s+E\d+.*$/, '');
+                            return { kind: 'series', id: next.e.id, ext: next.e.ext, name: sname + '  S' + next.s.n + ' E' + n, duration: next.e.duration || null,
+                                key: 'episode:' + next.e.id, series: f.series, poster: f.poster, title: next.e.title || '' };
+                        }
+                    }
+                    return null;
+                }, () => null);
+            }
+            /** An episode ended: the next one in 10 s (cancellable on the screen and on the phone). */
+            function nextCheck() {
+                const pb = st && st.playback;
+                if (nextUp && Date.now() >= nextUp.at) { const f = nextUp.f; nextUp = null; playFilm(f, 0); say('Prossimo episodio: ' + short(f.name)); return; }
+                if (!playingFilm || playingFilm.kind !== 'series' || !pb || pb.kind !== 'film' || pb.state !== 'ended') return;
+                if (settingsGet('autonext') === false || nextAsked === playingFilm.key) return;
+                const was = playingFilm; nextAsked = was.key;
+                findNext(was).then((n) => {
+                    const p2 = st && st.playback;
+                    if (!n || playingFilm !== was || !p2 || p2.state !== 'ended') return;
+                    nextUp = { f: n, at: Date.now() + 10000 };
+                    log.info('next episode: ' + n.name);
+                    if (remoteRef) remoteRef.publish();
+                });
+            }
             function playFilm(f, start) {
+                nextUp = null;
                 playingFilm = f; playingCh = null; panel = null;
                 page = 'player'; overlayUntil = Date.now() + 6000;
                 svc.ask({ cmd: 'film-play', kind: f.kind, id: f.id, ext: f.ext, name: f.name, start: Math.floor(start || 0), duration: f.duration || 0 }).then(poll, (e) => say(e.message));
@@ -971,7 +1011,7 @@ mgu.run({
                 // 0.3.8: a 4K HDR film the car cannot show: the service looks for its HD version in the account
                 else if (pb.state === 'finding') { msg = 'Finding the HD version...'; sub = pb.note || '4K HDR does not play in this car.'; }
                 else if (pb.state === 'loading') { msg = (film ? 'Starting ' : 'Tuning ') + short((pb.note && pb.film && pb.film.name) || subject.name) + '...'; sub = pb.error ? 'Reconnecting: ' + pb.error : pb.note || ''; }
-                else if (pb.state === 'ended') { msg = 'The end'; sub = 'Play starts it again; the arrow goes back.'; }
+                else if (pb.state === 'ended' && !nextUp) { msg = 'The end'; sub = 'Play starts it again; the arrow goes back.'; }
                 else if (!allowed) { msg = 'The picture shows while parked'; sub = 'The sound goes on. A passenger can watch while driving: Settings, Video while driving.'; }
                 else if (!pic && gpuVideo()) { msg = 'Starting the picture...'; sub = ''; }
                 else if (!pic) { msg = 'Waiting for the GPU renderer'; sub = 'Install a renderer from the Store (mgu-render), then restart the head unit.'; }
@@ -998,6 +1038,24 @@ mgu.run({
                 }
                 // a tap anywhere else shows the controls (or hides them): drawn last, since the kit gives a tap to the
                 // first target under the finger and this one, drawn first, took every tap (the back arrow, the actions)
+                // the next episode's card: a ring counting down, Guarda ora / Annulla (first: their taps before the picture's)
+                if (nextUp) {
+                    const left = Math.max(0, (nextUp.at - Date.now()) / 1000), cw = 620, chh = 150, cx0 = W - cw - 40, cy0 = fullH - chh - 50;
+                    cv.roundRect(cx0, cy0, cw, chh, 22, A_('#141418', 0.94));
+                    const rx = cx0 + 80, ry = cy0 + chh / 2;
+                    cv.arc(rx, ry, 44, 50, 0, 360, A_('#ffffff', 0.16));
+                    cv.arc(rx, ry, 44, 50, -90, -90 + 360 * (1 - left / 10), C.accent);
+                    cv.text(String(Math.ceil(left)), rx, ry + 12, 32, C.text, Object.assign({ align: 'center' }, B));
+                    const tx = cx0 + 160;
+                    cv.text('Prossimo episodio', tx, cy0 + 40, 17, C.accent, B);
+                    cv.text(fit(cv, short(nextUp.f.name) + (nextUp.f.title ? ' · ' + nextUp.f.title : ''), 21, cw - 190, B), tx, cy0 + 72, 21, C.text, B);
+                    [['Guarda ora', () => { const f = nextUp.f; nextUp = null; playFilm(f, 0); }, true], ['Annulla', () => { nextUp = null; say('Prossimo episodio annullato'); }, false]].forEach((b, i) => {
+                        const bw = 170, bx = tx + i * (bw + 14), by2 = cy0 + 90;
+                        cv.roundRect(bx, by2, bw, 44, 22, b[2] ? C.accent : A_('#ffffff', 0.16));
+                        cv.text(b[0], bx + bw / 2, by2 + 29, 18, C.text, Object.assign({ align: 'center' }, B));
+                        btn(cv, 'next_' + i, bx, by2, bw, 44, b[1], 22);
+                    });
+                }
                 const picBtn = () => btn(cv, 'pic', 0, A.y, W, fullH - A.y, () => { if (Date.now() < overlayUntil && !panel) overlayUntil = 0; else overlayUntil = Date.now() + 6000; panel = null; }, 0);
                 // the back arrow: a tap shows it on every screen, nothing playing included (0.2.2 in the car: a dead end)
                 const backArrow = () => {
@@ -1182,14 +1240,16 @@ mgu.run({
                     if (!pb || !(playingCh || playingFilm)) return { state: 'idle' };
                     return { state: pb.state, kind: playingFilm ? (playingFilm.kind === 'series' ? 'episode' : 'film') : 'live',
                         name: playingFilm ? playingFilm.name : playingCh.name, pos: Math.floor(pb.pos || 0), dur: Math.floor(pb.duration || 0),
-                        picture: pictureAllowed() };
+                        picture: pictureAllowed(),
+                        next: nextUp ? { name: nextUp.f.name, in: Math.max(0, Math.ceil((nextUp.at - Date.now()) / 1000)) } : null };
                 },
                 onCommand: guard('remote', (c) => {
                     const show = () => { ui.open('MAIN'); };
                     if (c.op === 'live') { play({ id: c.id, name: c.name }, null); show(); say('Dal telefono: ' + short(c.name)); }
                     else if (c.op === 'film' || c.op === 'episode') {
                         const key = (c.op === 'film' ? 'movie:' : 'episode:') + c.id, r = resume[key];
-                        playFilm({ kind: c.op === 'film' ? 'movie' : 'series', id: Number(c.id), ext: c.ext, name: c.name, duration: c.duration || null, key }, r && r.pos > 30 ? r.pos : 0);
+                        playFilm({ kind: c.op === 'film' ? 'movie' : 'series', id: Number(c.id), ext: c.ext, name: c.name, duration: c.duration || null, key,
+                            series: c.series ? Number(c.series) : undefined }, r && r.pos > 30 ? r.pos : 0);
                         show(); say('Dal telefono: ' + short(c.name) + (r && r.pos > 30 ? ' (riprendo da ' + hms(r.pos) + ')' : ''));
                     }
                     else if (c.op === 'stop') stopPlay();
@@ -1198,7 +1258,10 @@ mgu.run({
                     else if (c.op === 'seek') skip(c.by);
                     else if (c.op === 'next') zap(1);
                     else if (c.op === 'prev') zap(-1);
+                    else if (c.op === 'next-now' && nextUp) { const f = nextUp.f; nextUp = null; playFilm(f, 0); }
+                    else if (c.op === 'next-cancel' && nextUp) { nextUp = null; say('Prossimo episodio annullato dal telefono'); }
                 }) });
+            remoteRef = remote;
             function drawPhone(cv, A, x0) {
                 const right = A.right, lx = x0 + 20, tw = Math.round((right - x0) * 0.55);
                 cv.text('Telecomando sul telefono', lx, A.y + 60, 36, C.text, B);

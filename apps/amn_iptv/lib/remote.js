@@ -10,7 +10,8 @@
  *   <topic>-ora  car -> phone: what is playing (name, kind, position, duration, state), on each change and every 15 s
  *                while something plays
  * Commands: { v: 1, op: 'live', id, name } | { v: 1, op: 'film', id, ext, name, duration } | { v: 1, op: 'episode', id,
- * ext, name, duration } | { v: 1, op: 'stop' | 'pause' | 'resume' | 'next' | 'prev' } | { v: 1, op: 'seek', by: seconds }.
+ * ext, name, duration, series } | { v: 1, op: 'stop' | 'pause' | 'resume' | 'next' | 'prev' | 'next-now' | 'next-cancel' } |
+ * { v: 1, op: 'seek', by: seconds }.
  * A command older than 60 s (a reconnect seeing an old one) is ignored. Whoever knows the topic can change the channel
  * and see the title playing: nothing else (the Xtream login never goes through it).
  *
@@ -47,9 +48,9 @@ function parseCommand(text) {
     const name = String(c.name || '').slice(0, 120);
     const ext = /^[a-z0-9]{2,5}$/i.test(String(c.ext || '')) ? String(c.ext) : 'mp4';
     if (c.op === 'live') return id(c.id) ? { op: 'live', id: id(c.id), name } : null;
-    if (c.op === 'film' || c.op === 'episode') return id(c.id) ? { op: c.op, id: id(c.id), ext, name, duration: Math.max(0, Number(c.duration) || 0) } : null;
+    if (c.op === 'film' || c.op === 'episode') return id(c.id) ? { op: c.op, id: id(c.id), ext, name, duration: Math.max(0, Number(c.duration) || 0), series: id(c.series) } : null;
     if (c.op === 'seek') { const by = Number(c.by); return isFinite(by) && Math.abs(by) <= 3600 ? { op: 'seek', by } : null; }
-    if (['stop', 'pause', 'resume', 'next', 'prev'].indexOf(c.op) >= 0) return { op: c.op };
+    if (['stop', 'pause', 'resume', 'next', 'prev', 'next-now', 'next-cancel'].indexOf(c.op) >= 0) return { op: c.op };
     return null;
 }
 
