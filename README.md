@@ -32,3 +32,17 @@ audio manager to put the TV sound on the speakers, and nothing else in the car.
 See [NOTICE.md](NOTICE.md). Built on arefahmad, nickgcode, cauliflowermossgrape and robertnisipeanu's work (MIT).
 
 Unofficial. Not made, endorsed or supported by BMW. Use at your own risk.
+
+## Support the project ☕
+
+These apps are free and open source, built in my spare time and tested on my own BMW 118i (F40).
+If they make your drives better, you can buy me a coffee: it helps me keep them working after
+iDrive updates and build new ones.
+
+[![PayPal](https://img.shields.io/badge/PayPal-Offrimi%20un%20caff%C3%A8-003087?logo=paypal&logoColor=white)](https://paypal.me/massilucio)
+
+🇮🇹 Le app sono gratuite e lo resteranno. Se ti sono utili, puoi offrirmi un caffè: mi aiuta a
+mantenerle aggiornate e a crearne di nuove.
+
+Donations are voluntary and do not buy support, warranties or features. These apps are unofficial
+and not affiliated with BMW. Use them at your own risk.
