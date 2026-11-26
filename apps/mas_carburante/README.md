@@ -60,3 +60,10 @@ a tap on it opens Waze navigating there (buttons: Waze, Apple Maps), and CarPlay
 
 On "Collega iPhone", *Invia i log dell'app al telefono* sends the app's last 600 log lines as a text file to the
 ntfy app (channel `-avvisi`), to forward when something does not work.
+
+## Costo reale del pieno (0.10.0)
+
+Stations are sorted by what a full tank really costs: the price times the litres to fill (the tank, setting *Capacità
+del serbatoio*, minus what is in it, from the car) plus the road there and back (straight line x 1.35, at the real
+consumption, else 6.5 l/100 km). Each row shows the full tank, the road's share and how much more than the first; the
+first is marked ★ Conviene. Setting *Ordina i distributori per*: real cost (default) or price per litre only.

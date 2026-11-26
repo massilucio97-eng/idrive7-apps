@@ -2,7 +2,7 @@
   "id": "mas_carburante",
   "title": "Carburante",
   "description": "I distributori più economici vicino a te, dai prezzi ufficiali del MIMIT (open data, aggiornati ogni giorno alle 8), e il diario dei rifornimenti con il consumo reale: i rifornimenti li trova da sola dal livello del serbatoio e dal contachilometri, tu tocchi il distributore dove hai fatto benzina. Solo lettura: non scrive nulla sull'auto. Internet dallo Store (mgu-uplink).",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "vendor": "mas",
   "loggingId": "MSF1",
   "mguHmi": [
@@ -373,6 +373,50 @@
         [
           "any",
           "Self o servito (il più basso)"
+        ]
+      ]
+    },
+    {
+      "key": "sort",
+      "label": "Ordina i distributori per",
+      "type": "choice",
+      "default": "real",
+      "options": [
+        [
+          "real",
+          "Costo reale del pieno (prezzo + strada per arrivarci)"
+        ],
+        [
+          "price",
+          "Solo prezzo al litro"
+        ]
+      ]
+    },
+    {
+      "key": "tank",
+      "label": "Capacità del serbatoio",
+      "type": "choice",
+      "default": "42",
+      "options": [
+        [
+          "40",
+          "40 litri"
+        ],
+        [
+          "42",
+          "42 litri (118i F40)"
+        ],
+        [
+          "45",
+          "45 litri"
+        ],
+        [
+          "50",
+          "50 litri"
+        ],
+        [
+          "52",
+          "52 litri"
         ]
       ]
     },

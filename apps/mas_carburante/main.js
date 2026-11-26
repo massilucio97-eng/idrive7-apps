@@ -207,6 +207,24 @@ mgu.run({
         // the app starts with the head unit, which wakes when the car is opened: the welcome once the rest has come in
         setTimeout(() => maybeWelcome('start'), 6000);
 
+        /* ---------- the real cost of a full tank: the price plus the road to get there ---------- */
+        // the litres to fill (tank minus what is in it, from the car), the real consumption (else 6,5 l/100 km), the road
+        // there and back (straight line x 1,35): each station's full tank including the trip; sorted by it (setting sort)
+        let lastLevel = null;
+        const eur2 = (x) => x.toFixed(2).replace('.', ',') + ' €';
+        const ROAD = 1.35;
+        function fullCost(list) {
+            const tank = Number(settings.get('tank')) || 42, sm = LOG.summary(diary, Date.now());
+            const l100 = sm.l100 || 6.5, litres = lastLevel !== null ? Math.max(5, tank - lastLevel) : tank * 0.75;
+            list.forEach((x) => {
+                x.trip = 2 * x.km * ROAD * l100 / 100 * x.price;
+                x.full = litres * x.price + x.trip;
+                x.litres = litres;
+            });
+            if (settings.get('sort') !== 'price') list.sort((a, b) => (a.full - b.full) || (a.km - b.km));
+            return list;
+        }
+
         /* ---------- the screen ---------- */
         function render(status) {
             const c = choice();
@@ -214,7 +232,8 @@ mgu.run({
             const head = FUEL_NAME[c.fuel] + ' ' + MODE_NAME[c.mode] + ' · entro ' + c.radius + ' km ' + (sz ? sz.label : p ? 'da te (iPhone)' : 'da ' + title(c.zone));
             let info, list = [];
             if (sz && sz.zone.centre) {
-                list = M.cheapest(sz.zone, Object.assign({}, c, { from: sz.from }));
+                list = M.cheapest(sz.zone, Object.assign({}, c, { from: sz.from, max: 60 }));
+                list = fullCost(list).slice(0, ROWS);
                 info = head + ' · prezzi del ' + dayMonth(zone.pricesDate);
                 if (!list.length) info += ' · nessun distributore trovato';
             } else if (sz && !sz.zone.centre) {
@@ -250,7 +269,9 @@ mgu.run({
                 const day = reportDay(s.at);
                 ui.cells(name, 0, {
                     Text1stRow: euro(s.price) + '   ·   ' + kmText(s.km) + '   ·   ' + (s.brand || 'Pompa bianca') + (c.mode === 'any' ? (s.self ? ' (self)' : ' (servito)') : ''),
-                    Text2ndRow: title(s.addr) + ', ' + title(s.comune) + (s.name ? ' · ' + title(s.name) : '') + (day ? ' · comunicato il ' + day : ''),
+                    Text2ndRow: (typeof s.full === 'number' ? (i === 0 && settings.get('sort') !== 'price' ? '★ Conviene: ' : '') + 'pieno ' + eur2(s.full) + ' (strada ' + eur2(s.trip) + ')' +
+                        (i > 0 && list[0] && typeof list[0].full === 'number' ? ' · +' + eur2(Math.max(0, s.full - list[0].full)) + ' rispetto al primo' : '') + ' · ' : '') +
+                        title(s.addr) + ', ' + title(s.comune) + (day ? ' · comunicato il ' + day : ''),
                 });
                 ui.visible(name, true);
             }
@@ -425,6 +446,7 @@ mgu.run({
                     if (!v) return;
                     const km = v.mileageKilometre, level = v.fluidLevelFuelTank;
                     if (!LOG.valid(km, level)) return;
+                    lastLevel = level;
                     const first = !carSignals;
                     carSignals = true;
                     const closedBefore = diary.lastClosed;
