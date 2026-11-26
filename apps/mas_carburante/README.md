@@ -50,3 +50,8 @@ one "CarPlay si disconnette" sends `fine;lat;lon;via;città` (arrival). The car 
 trip without its arrival takes the next trip's departure. Places on the same street within a distance (setting, default 300 m) are one place, the house numbers shown as a
 range ("Corso Francia 120-145, Collegno"); far apart on a long street, two places. Addresses are kept only in the car's diary and in the
 attachments (whoever has the channel or the attachment's link can read them).
+
+## Portami lì (0.9.0)
+
+A tap on a station (when no refuel is waiting for its station) sends a notification to the phone (`<topic>-avvisi`):
+a tap on it opens Waze navigating there (buttons: Waze, Apple Maps), and CarPlay shows the route.

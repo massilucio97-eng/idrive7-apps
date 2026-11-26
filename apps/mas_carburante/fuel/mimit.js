@@ -138,7 +138,7 @@ function cheapest(zone, choice) {
             if (choice.mode === 'servito' && p[2]) return;
             if (!best || p[1] < best[1]) best = p;
         });
-        if (best) out.push({ id: id, name: s.name, brand: s.brand, addr: s.addr, comune: s.comune, km: dkm, price: best[1], self: best[2], at: best[3] });
+        if (best) out.push({ id: id, name: s.name, brand: s.brand, addr: s.addr, comune: s.comune, km: dkm, price: best[1], self: best[2], at: best[3], lat: s.lat, lon: s.lon });
     });
     out.sort((a, b) => (a.price - b.price) || (a.km - b.km));
     return out.slice(0, max);

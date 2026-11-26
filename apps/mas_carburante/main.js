@@ -345,12 +345,26 @@ mgu.run({
             const n = i;
             ui.onClick('ROW_' + n, () => {
                 const s = shown[n - 1];
-                if (!s || !LOG.pending(diary)) return;
+                if (!s) return;
+                if (!LOG.pending(diary)) { takeMeThere(s); return; }
                 LOG.setStation(diary, s.price, (s.brand || 'Pompa bianca') + ', ' + title(s.addr) + ', ' + title(s.comune));
                 saveDiary();
                 log.info('refuel: station ' + s.id + ' at ' + s.price);
                 render();
             });
+        }
+        /** "Portami lì": a notification on the phone that opens Waze (or Apple Maps) on the station; CarPlay then shows it. */
+        let sentTo = null;
+        function takeMeThere(s) {
+            if (typeof s.lat !== 'number') { render('distributore senza coordinate: premi Aggiorna i prezzi'); return; }
+            const ll = s.lat.toFixed(6) + ',' + s.lon.toFixed(6);
+            const waze = 'https://waze.com/ul?ll=' + ll + '&navigate=yes', maps = 'https://maps.apple.com/?daddr=' + ll + '&dirflg=d';
+            const ok = notifier.alert('Portami lì: ' + (s.brand || 'Pompa bianca') + ' ' + euro(s.price),
+                title(s.addr) + ', ' + title(s.comune) + ' (' + kmText(s.km) + '). Tocca per aprire Waze.', ['round_pushpin', 'fuelpump'], 4,
+                { click: waze, actions: [{ action: 'view', label: 'Waze', url: waze, clear: true }, { action: 'view', label: 'Mappe', url: maps, clear: true }] });
+            sentTo = s.id;
+            log.info('take me there: ' + s.id);
+            render(ok ? 'inviato al telefono: tocca la notifica per aprire Waze' : 'notifiche spente nelle impostazioni: attivale per "Portami lì"');
         }
         ui.onClick('BTN_SKIP', () => { if (LOG.skip(diary)) { saveDiary(); render(); } });
         ui.onClick('BTN_DIARY', () => { renderDiary(); ui.open('DIARY'); });

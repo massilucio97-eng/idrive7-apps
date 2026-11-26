@@ -35,11 +35,16 @@ function start(http, topic, log, enabled) {
         flush();
     }
     return {
-        /** A notification on the phone: title, text, tags (ntfy emoji names), priority 1-5. */
-        alert(title, message, tags, priority) {
-            if (!enabled()) return;
+        /** A notification on the phone: title, text, tags (ntfy emoji names), priority 1-5; extra: { click (URL opened on a
+         * tap), actions ([{ action: 'view', label, url }], buttons) }. Returns false when notifications are off. */
+        alert(title, message, tags, priority, extra) {
+            if (!enabled()) return false;
             log.info('notify: ' + title);
-            push({ kind: 'alert', at: Date.now(), body: { topic: topic + '-avvisi', title: title, message: message, tags: tags || [], priority: priority || 3 } });
+            const body = { topic: topic + '-avvisi', title: title, message: message, tags: tags || [], priority: priority || 3 };
+            if (extra && extra.click) body.click = extra.click;
+            if (extra && extra.actions) body.actions = extra.actions;
+            push({ kind: 'alert', at: Date.now(), body: body });
+            return true;
         },
         /** The summary for the widget (sent when it changed, or every 6 h so ntfy keeps one). */
         state(obj) {
