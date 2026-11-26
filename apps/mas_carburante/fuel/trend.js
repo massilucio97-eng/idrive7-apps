@@ -135,4 +135,17 @@ function compute(hist, zone, choice) {
     return r;
 }
 
-module.exports = { record, compute, priceOf, KEEP_DAYS };
+/** The median price around (the choice's radius) of each kept day, oldest first, at most `days`: [['AAAA-MM-GG', €/l], ...]
+ * (a day with fewer than MIN_N stations is left out). For the phone widget's chart. */
+function series(hist, zone, choice, days) {
+    if (!hist || !hist.days || !zone || !zone.stations) return [];
+    const ids = inRadius(zone, choice), out = [];
+    Object.keys(hist.days).sort().slice(-(days || 14)).forEach((d) => {
+        const ps = [];
+        ids.forEach((id) => { const p = priceOf(hist.days[d], id, choice.fuel, choice.mode); if (p !== null) ps.push(p); });
+        if (ps.length >= MIN_N) out.push([d, Math.round(median(ps) * 1000) / 1000]);
+    });
+    return out;
+}
+
+module.exports = { record, compute, priceOf, series, KEEP_DAYS };

@@ -310,6 +310,9 @@ mgu.run({
                 lastTrip: lt ? { at: lt.start, km: lt.km, litres: lt.litres, eur: lt.eur } : null,
                 best: b ? { price: b.price, brand: b.brand || 'Pompa bianca', addr: title(b.addr), comune: title(b.comune), km: b.km } : null,
                 trend: trend ? { kind: trend.kind, text: trend.short } : null,
+                // the widget's chart: the median price around, day by day (14 days)
+                series: (() => { const sz = shown_(); return sz && sz.zone.centre ? TR.series(hist, sz.zone, Object.assign({}, c, { from: sz.from }), 14) : []; })(),
+                kml: sm.l100 ? Math.round(1000 / sm.l100) / 10 : null,
                 range: lastRange, odometer: diary.last ? diary.last.km : null, level: diary.last ? diary.last.level : null,
             } });
         }
