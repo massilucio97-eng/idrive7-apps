@@ -1285,7 +1285,7 @@ mgu.run({
                     '1.  Installa Scriptable dall\'App Store e aggiungi lo script', '     "IPTV Telecomando" (iptv_telecomando.js).',
                     '2.  Inquadra il codice con la fotocamera: collega il telefono a questa auto.',
                     '3.  La prima volta inserisci server, utente e password Xtream sul telefono.', '',
-                    'Canale: ' + remote.topic + '   ·   ' + ({ connected: 'collegato', connecting: 'mi collego...', offline: 'auto offline' })[remote.state()]];
+                    'Canale: ' + remote.topic + '   ·   ' + ({ connected: 'auto pronta, in attesa del telefono', connecting: 'mi collego a internet...', offline: 'auto offline' })[remote.state()]];
                 lines.forEach((l, i) => cv.text(fit(cv, l, 19, tw, M), lx, A.y + 110 + i * 32, 19, i === 0 || i === lines.length - 1 ? C.grey : C.text, M));
                 const by = A.y + 110 + lines.length * 32 + 16;
                 cv.roundRect(lx, by, 300, 52, 26, A_('#ffffff', 0.16));
