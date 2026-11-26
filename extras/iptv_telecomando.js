@@ -18,6 +18,8 @@ if (!fm.fileExists(dir)) fm.createDirectory(dir);
 const FAV_FILE = fm.joinPath(dir, "preferiti.json");
 
 const kget = (k) => (Keychain.contains(k) ? Keychain.get(k) : "");
+// a text field's value: Scriptable gives null for an empty field
+const tf = (a, i) => String(a.textFieldValue(i) || "");
 const qp = (args.queryParameters || {});
 if (qp.topic && /^tv-[a-z2-7]{20}$/.test(qp.topic)) Keychain.set(K.topic, qp.topic);
 
@@ -35,9 +37,10 @@ async function setup(force) {
   a.addAction("Salva");
   a.addCancelAction("Annulla");
   if ((await a.present()) < 0) return !!(server && user && pass && topic);
-  server = a.textFieldValue(0).trim().replace(/\/+$/, "");
+  server = tf(a, 0).trim().replace(/\/+$/, "");
   if (server && !/^https?:\/\//i.test(server)) server = "http://" + server;
-  user = a.textFieldValue(1).trim(); pass = a.textFieldValue(2); topic = a.textFieldValue(3).trim().toLowerCase();
+  user = tf(a, 1).trim(); pass = tf(a, 2); topic = tf(a, 3).trim().toLowerCase();
+  if (!server || !user || !pass) { await note("Inserisci server, utente e password del tuo abbonamento Xtream."); return false; }
   if (!/^tv-[a-z2-7]{20}$/.test(topic)) { await note("Il canale non è valido: deve essere come tv-xxxxxxxxxxxxxxxxxxxx."); return false; }
   Keychain.set(K.server, server); Keychain.set(K.user, user); Keychain.set(K.pass, pass); Keychain.set(K.topic, topic);
   for (const f of fm.listContents(dir)) if (f.startsWith("cache_")) fm.remove(fm.joinPath(dir, f));
@@ -268,7 +271,7 @@ async function favScreen() {
 async function doSearch() {
   const a = new Alert(); a.title = "Cerca"; a.addTextField("nome del canale, film o serie"); a.addAction("Cerca"); a.addCancelAction("Annulla");
   if ((await a.present()) < 0) return;
-  const q = a.textFieldValue(0).trim().toLowerCase();
+  const q = tf(a, 0).trim().toLowerCase();
   if (q.length < 2) return;
   go(async () => {
     header("Cerca: " + q);
