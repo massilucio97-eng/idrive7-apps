@@ -54,7 +54,10 @@ function parseMsg(text) {
     const p = parsePos(parts[0] + ';' + parts[1]);
     if (!p) return null;
     const clip = (x) => String(x || '').replace(/\s+/g, ' ').trim().slice(0, 60);
-    return { pos: p, end: end, via: clip(parts[2]), comune: clip(parts[3]) };
+    // the street without its house number ("Viale San Giovanni Bosco 12" -> "Viale San Giovanni Bosco"): trips from
+    // the same street group together, and the exact address is not kept
+    const street = clip(parts[2]).replace(/(?:[\s,]+(?:n\.?\s*)?\d+\s*[A-Za-z]?(?:\s*\/\s*[A-Za-z0-9]+)?)+$/i, '').trim();
+    return { pos: p, end: end, via: street, comune: clip(parts[3]) };
 }
 
 /** "nome Massimo" (the welcome's name, sent from the ntfy web page or app) -> 'Massimo'; "nome -" or "nome" -> ''; else null. */
