@@ -30,6 +30,11 @@
       "id": "amn-sideview-cam",
       "kind": "tool",
       "path": "native/amn-sideview-cam"
+    },
+    {
+      "id": "aurelm-myairplay",
+      "kind": "tool",
+      "path": "native/aurelm-myairplay"
     }
   ]
 }

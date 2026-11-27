@@ -42,3 +42,14 @@ colours), no third-party artwork.
   Open-Meteo (CC BY 4.0). Messages to the phone through ntfy.sh.
 - **IPTV** changes: Stretch, phone remote (`lib/remote.js`), next episode, favourites sync, logs to the phone.
 - **extras/**: `carburante_widget.js`, `iptv_telecomando.js` (Scriptable scripts, MIT).
+
+myAirPlay (`apps/aurelm_myairplay`, `native/aurelm-myairplay`, `native/uxplay-mgu`):
+
+- **aurelmarius/bmw-apps** (commit 0976d16dda9be301d98b0253586d4c095160ac2b): the app myAirPlay and the myAirPlay
+  service, copied unchanged so the Store can install both from this repository (in the author's repository the Store
+  finds the app but not the service: its `mgu-repo.json` lists no components). The service is
+  **GPL-3.0-or-later** (`native/aurelm-myairplay/LICENSE`); its receiver `uxplay-mgu` is built on
+  [UxPlay](https://github.com/FDH2/UxPlay) (GPL-3.0, `UXPLAY-LICENSE`) with FFmpeg (`FFMPEG-LICENSE`). The binary is
+  the one of the author's package `aurelm-myairplay@1.0.1.tgz` (release v1.5.16); its source is in `native/uxplay-mgu`.
+  Only the app's version is changed (1.0.3), and the kit's `parked.js` takes the author's `strict` option.
+

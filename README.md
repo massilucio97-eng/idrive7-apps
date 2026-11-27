@@ -45,6 +45,12 @@ tested on a BMW 118i (F40), iDrive 7 MGU, software P18_23w44.
   fuel used) and sent to the phone. It turns itself off when your iPhone reconnects, or with the PIN, or from the phone
   (Siri). It does not touch BMW's own menus (use the Guest profile) and it is not an anti-theft.
 
+### myAirPlay (from aurelmarius/bmw-apps)
+
+The iPhone's screen mirrored on the centre screen (also with wireless CarPlay), and AirPlay videos (YouTube) played by
+the head unit, by **aurelmarius**: copied unchanged with its service, so the Store installs both from here
+(see NOTICE.md). Restart the head unit once after the first install.
+
 ### IPTV improvements (`apps/amn_iptv`, `native/amn-iptv`, `native/tvh-player`)
 - **Stretch** picture mode: full screen, stretched instead of cropped or letterboxed (change in `tvh-player`,
   rebuilt by this fork's GitHub Actions).
