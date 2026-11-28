@@ -1,7 +1,7 @@
 {
   "id": "amn-iptv",
   "kind": "tool",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "license": "GPL-3.0-or-later",
   "title": "IPTV service",
   "description": "For the app IPTV: the live channels, films and series of your own Xtream Codes IPTV account on the head unit. A channel's MPEG-TS stream is decoded on the GPU into mgu-render's frame file (the app shows it) and played into SmartXbar's CarLife input. Sign in once from the phone (a page on the car Wi-Fi, opened from the app's QR code); the server, user and password are kept on this head unit only (root's, 0600), never in the app or its repository. Its internet goes through mgu-uplink, as uid 13161 only; the player runs as nobody. Based on aurelmarius' TVH Player service and tvh-player (GPL-3.0-or-later).",

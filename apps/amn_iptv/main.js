@@ -169,6 +169,40 @@ mgu.run({
             }
             setInterval(guard('poll', poll), 1500);
             poll();
+
+            /* ---------- the internet sooner (service 0.3.8: uplink-scan) and what the uplink is doing ----------
+             * While the app shows and the car is offline, the service asks mgu-uplink for a Wi-Fi scan, which joins the saved
+             * hotspot at once instead of at its own next scan (up to 2 minutes apart, none on CarPlay's band): every 12 s for
+             * the first 3 minutes, then every minute. */
+            let offlineAt = 0, lastNudge = 0;
+            function nudgeUplink() {
+                const off = st && st.uplink && st.uplink.online === false;
+                if (!off) { offlineAt = 0; return; }
+                if (!ui.isVisible('MAIN')) return;
+                const now = Date.now();
+                if (!offlineAt) offlineAt = now;
+                if (now - lastNudge < (now - offlineAt < 180000 ? 12000 : 60000)) return;
+                lastNudge = now;
+                svc.ask({ cmd: 'uplink-scan' }, 10000).catch(() => {});
+            }
+            setInterval(guard('uplink', nudgeUplink), 2000);
+            /** What mgu-uplink is doing, in a line, while offline (its status.json, readable by all); null when online */
+            function netLine() {
+                if (!st || !st.uplink || st.uplink.online !== false) return null;
+                let us = null;
+                try { us = JSON.parse(fs.readFileSync('/run/mgu-uplink/status.json', 'utf8')); } catch (e) { return 'Nessuna connessione: il servizio internet dello Store non risponde'; }
+                if (us.state === 'online') return null;
+                const w = us.wifi;
+                if (us.device && us.device.kind !== 'wifi' && us.error) return 'Internet: ' + us.error;
+                if (!w || !w.enabled) return 'Nessuna connessione: il Wi-Fi dello Store è spento (Store, pagina Wi-Fi)';
+                const name = w.ssid || (w.saved && w.saved[0]) || 'hotspot';
+                if (w.link === 'connecting') return 'Mi collego a «' + name + '»...';
+                if (w.link === 'connected') return 'Collegato a «' + name + '», attendo l\'indirizzo...';
+                if (w.link === 'unavailable' || w.link === 'failed') return 'Wi-Fi non disponibile' + (w.error ? ': ' + w.error : '');
+                const seen = (w.networks || []).some((n) => n.saved);
+                return seen ? 'Hotspot «' + name + '» trovato, mi collego...'
+                    : 'Cerco «' + name + '»: sull\'iPhone apri Hotspot personale (Consenti accesso ad altri, Massimizza compatibilità)';
+            }
             // what the service plays: sound and picture settings
             const sendPrefs = () => svc.ask({ cmd: 'prefs', gain: Number(settingsGet('gain')) || 0, subs: true, even: false, stretch: settingsGet('picture') === 'stretch',
                 // Stretch: the picture made the shape it is shown in, the whole screen (1920 x 720) or the app's page
@@ -852,6 +886,8 @@ mgu.run({
                 cv.clip(x0, y0 + 6, colW, A.bottom - y0 - 12);
                 const first = Math.floor(scroll.cats / rowH);
                 if (!cats.length) cv.text(st && st.client && st.client.state !== 'connected' ? 'Connecting to your provider...' : 'Loading categories...', x0 + 20, y0 + 40, 18, C.grey, M);
+                const nl = !cats.length ? netLine() : null;
+                if (nl) { cv.clip(x0, y0, A.right - x0, A.bottom - y0); cv.text(fit(cv, nl, 18, A.right - x0 - 60, M), x0 + 20, y0 + 74, 18, C.amber, M); }
                 oc.slice(first, first + visRows + 2).forEach((c, i) => {
                     const y = y0 + 8 + (first + i) * rowH - scroll.cats, on = c.id === catSel;
                     if (on) cv.roundRect(x0 + 8, y, colW - 16, rowH - 6, 12, C.accentDim);

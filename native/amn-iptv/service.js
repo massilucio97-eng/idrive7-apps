@@ -53,7 +53,7 @@ const nftm = require('./nft');
 const pagem = require('./page');
 const { createPlayer } = require('./player');
 
-const VERSION = '0.3.7';
+const VERSION = '0.3.8';
 const PAGE_PORT = 8493;   // aurelm: Emby 8490, TVH (bmw-test-apps) 8491, TVH Player 8492: all may be open at once
 const PAGE_MINUTES = 10;
 const IDLE_MS = 10 * 60 * 1000;
@@ -325,10 +325,44 @@ function createService(opts) {
         try { const l = JSON.parse(fs.readFileSync(o.leasePath, 'utf8')); return l && l.ip ? { online: true, iface: l.interface, ip: l.ip, dns: l.dns || [] } : { online: false }; }
         catch (e) { return { online: false }; }
     }
+    /*
+     * The internet sooner: mgu-uplink (the Store's) joins a saved Wi-Fi (the iPhone's hotspot) found by its scans, which it
+     * spaces out (at once, 10, 20, 40, 80 s, then every 2 min) and, during wireless CarPlay, makes only on the other band, or
+     * not at all; a scan asked for covers every channel and joins a saved network it finds. Its requests socket is root's:
+     * this service (root) asks for one while the app waits offline (uplink-scan, at most every 12 s), only with the uplink's
+     * Wi-Fi switched on and not already online or joining. /run/mgu-uplink/status.json says how it is going (0644).
+     */
+    const UPLINK_STATUS = process.env.MGU_UPLINK_STATUS || '/run/mgu-uplink/status.json';
+    const UPLINK_CTL = process.env.MGU_UPLINK_CTL || '/run/mgu-uplink/ctl.sock';
+    let nudge = { at: 0, ok: null, error: null, count: 0 };
+    function uplinkStatus() { try { return JSON.parse(fs.readFileSync(UPLINK_STATUS, 'utf8')); } catch (e) { return null; } }
+    function uplinkScan() {
+        const us = uplinkStatus(), w = us && us.wifi;
+        if (Date.now() - nudge.at < 12000) return Promise.resolve(nudge);
+        if (!us) { nudge = Object.assign({}, nudge, { error: 'mgu-uplink non risponde' }); return Promise.resolve(nudge); }
+        if (us.state === 'online' || !w || !w.enabled || w.link === 'connecting' || w.link === 'connected' || w.link === 'online') return Promise.resolve(nudge);
+        nudge.at = Date.now();
+        return new Promise((res) => {
+            let buf = '', done = false;
+            const end = (ok, err) => {
+                if (done) return; done = true; clearTimeout(t);
+                try { c.destroy(); } catch (e) { /* gone */ }
+                nudge = { at: nudge.at, ok, error: err || null, count: nudge.count + 1 };
+                log('uplink: scan asked (' + (ok ? 'ok' : err) + '), wifi ' + w.link + (w.paused ? ', paused: ' + w.paused : ''));
+                res(nudge);
+            };
+            const c = net.connect(UPLINK_CTL);
+            const t = setTimeout(() => end(false, 'timeout'), 5000);
+            c.setEncoding('utf8');
+            c.on('connect', () => c.write(JSON.stringify({ op: 'wifi-scan' }) + '\n'));
+            c.on('data', (d) => { buf += d; const i = buf.indexOf('\n'); if (i < 0) return; let r = null; try { r = JSON.parse(buf.slice(0, i)); } catch (e) { /* bad */ } end(!!(r && r.ok), r && r.error); });
+            c.on('error', (e) => end(false, e.code || e.message));
+        });
+    }
     const playing = () => !!(st.playback && PLAYING.indexOf(st.playback.state) >= 0);
     function status() {
         return Object.assign({}, st, {
-            now: now(), uplink: uplink(), player: player.state(), prefs,
+            now: now(), uplink: Object.assign(uplink(), { nudge }), player: player.state(), prefs,
             account: account ? { host: (/^https?:\/\/([^/]+)/i.exec(account.server) || [])[1] || null, user: account.user, serverName: account.serverName,
                 expires: account.expires || null, maxConnections: account.maxConnections || null } : null,
             categories: { at: cats.at, count: cats.categories.length },
@@ -408,6 +442,8 @@ function createService(opts) {
                 try { writeJson('prefs.json', prefs); } catch (e) { log('prefs: ' + e.message); }
                 toChild({ op: 'prefs', prefs });
             }
+        } else if (cmd === 'uplink-scan') {
+            await uplinkScan();
         } else if (cmd === 'exit') { setTimeout(() => stop(0), 100); }
         return status();
     }
